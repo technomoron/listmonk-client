@@ -4,13 +4,14 @@ Minimal TypeScript client for the Listmonk HTTP API with a small response
 wrapper and helpers for common flows (create subscribers, list members, bulk
 add, change email).
 
-## Interfaces (LMC*)
+## Interfaces (LMC\*)
 
 - `LMCConfig`
   - `apiURL` (string, required): base API URL.
   - `token` (string, required): Basic auth token/password.
   - `user` (string, required): Basic auth username.
-  - `timeoutMS` (number, optional): request timeout in milliseconds (default `15000`).
+  - `timeoutMS` (number, optional): request timeout in milliseconds (default
+    `15000`).
   - `debug` (boolean, optional): enable request logging.
   - `listPageSize` (number, optional): default `per_page` for paging.
 
@@ -35,7 +36,8 @@ add, change email).
 
 - `LMCSubscription`
   - `id` (number, required): numeric list id.
-  - `subscription_status` (string, optional): status of the subscriber on this list.
+  - `subscription_status` (string, optional): status of the subscriber on this
+    list.
 
 - `LMCSubscriber`
   - `id` (number, required): subscriber id.
@@ -43,7 +45,8 @@ add, change email).
   - `email` (string, required): subscriber email address.
   - `name` (string, required): subscriber display name.
   - `attribs` (LMCSubscriberAttribs, required): custom attributes.
-  - `status` (string, required): global subscriber status (e.g., enabled, blocklisted).
+  - `status` (string, required): global subscriber status (e.g., enabled,
+    blocklisted).
   - `lists` (array, optional): `LMCSubscription` or `LMCListRecord` entries.
   - `created_at` (string, optional): created timestamp.
   - `updated_at` (string, optional): updated timestamp.
@@ -56,7 +59,8 @@ add, change email).
   - `tags` (string[], optional): list tags.
   - `created_at` (string, optional): list created timestamp.
   - `updated_at` (string, optional): list updated timestamp.
-  - `subscription_status` (string, optional): merged membership status when attached to a subscriber.
+  - `subscription_status` (string, optional): merged membership status when
+    attached to a subscriber.
 
 - `LMCSubscriberPage`
   - `results` (LMCSubscriber[], required): page of subscribers.
@@ -69,7 +73,8 @@ add, change email).
   - `email` (string, required): subscriber email.
   - `name` (string, optional): display name.
   - `uid` (string, optional): caller-defined unique id for deduplication.
-  - `attribs` (LMCSubscriberAttribs, optional): attributes; `uid` is mirrored when present.
+  - `attribs` (LMCSubscriberAttribs, optional): attributes; `uid` is mirrored
+    when present.
 
 - `LMCSubscriptionSnapshot`
   - `email` (string, required): processed email.
@@ -79,7 +84,8 @@ add, change email).
   - `created` (LMCSubscriber[], required): subscribers created.
   - `added` (LMCSubscriber[], required): existing subscribers attached.
   - `skippedBlocked` (string[], required): emails skipped due to blocklist.
-  - `skippedUnsubscribed` (string[], required): emails skipped due to unsubscribed status.
+  - `skippedUnsubscribed` (string[], required): emails skipped due to
+    unsubscribed status.
   - `memberships` (LMCSubscriptionSnapshot[], optional): membership snapshots.
 
 ## Installation
@@ -119,15 +125,8 @@ Use `response.isSuccess()` as a type guard, or inspect `success`/`data`.
 ### `new ListMonkClient(config)`
 
 - `config: LMCConfig`
-  `{ apiURL: string;
-     token: string;
-     user?: string;
-     timeoutMS?: number;
-     debug?: boolean;
-     listPageSize?: number;
-   }`
+  `{ apiURL: string;    token: string;    user?: string;    timeoutMS?: number;    debug?: boolean;    listPageSize?: number;  }`
   - Basic auth only (user + token).
-
 
 ### `client.subscribe({ listId, email, name?, attribs? }, options?)`
 
@@ -136,14 +135,16 @@ Create a subscriber (if it doesn't exist) and subscribe it to a list.
 - `listId`: numeric list id.
 - `attribs`: arbitrary JSON-safe map to store alongside the subscriber.
 - `options`: `LMCSubscribeOptions` (`preconfirm`, `status`).
-- Returns `LMCResponse<LMCSubscriber>` (includes `id`, `uuid`, `lists`, `attribs`, etc.).
+- Returns `LMCResponse<LMCSubscriber>` (includes `id`, `uuid`, `lists`,
+  `attribs`, etc.).
 
 ### `client.listMembersByStatus(listId, status, pagination?)`
 
 List subscribers on a list by status.
 
 - `status`: `LMCListMemberStatus`
-- `pagination`: `{ page?: number; perPage?: number }` (defaults `perPage` to `listPageSize` from config)
+- `pagination`: `{ page?: number; perPage?: number }` (defaults `perPage` to
+  `listPageSize` from config)
 - Returns `LMCResponse<LMCSubscriberPage>`.
 
 ### `client.addSubscribersToList(listId, entries, options?)`
