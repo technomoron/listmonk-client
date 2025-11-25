@@ -25,7 +25,8 @@ add, change email).
   - Record<string, JsonValue> (JSON-safe attributes).
 
 - `LMCSubscriptionStatus`
-  - `"enabled" | "disabled" | "blocklisted" | "unconfirmed" | "bounced" | "unsubscribed"` (also returned in membership data).
+  - `"enabled" | "disabled" | "blocklisted" | "unconfirmed" | "bounced" | "unsubscribed"`
+    (also returned in membership data).
 - `LMCSubscribeOptions`
   - `preconfirm` (boolean, optional): preconfirm subscriptions (default `true`).
   - `status` (LMCSubscriptionStatus, optional): override subscriber status.
@@ -35,8 +36,8 @@ add, change email).
 
 - `LMCSubscription`
   - `id` (number, required): numeric list id.
-  - `subscription_status` (LMCSubscriptionStatus, optional): status of the subscriber on this
-    list.
+  - `subscription_status` (LMCSubscriptionStatus, optional): status of the
+    subscriber on this list.
 
 - `LMCSubscriber`
   - `id` (number, required): subscriber id.

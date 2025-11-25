@@ -720,7 +720,6 @@ export default class ListMonkClient {
     return LMCResponse.error("Subscriber not found", { code: 404 });
   }
 
-
   private translateStatus(status: LMCListMemberStatus): {
     subscriptionStatus?: string;
     query?: string;
