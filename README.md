@@ -23,6 +23,16 @@ add, change email).
 - `LMCSubscriberAttribs`
   - Record<string, JsonValue> (JSON-safe attributes).
 
+- `LMCSubscriptionStatus`
+  - `"enabled" | "disabled" | "blocklisted" | "unconfirmed" | "bounced"`.
+
+- `LMCSubscribeOptions`
+  - `preconfirm` (boolean, optional): preconfirm subscriptions (default `true`).
+  - `status` (LMCSubscriptionStatus, optional): override subscriber status.
+
+- `LMCListMemberStatus`
+  - `"subscribed" | "unsubscribed" | "blocked"`.
+
 - `LMCSubscription`
   - `id` (number, required): numeric list id.
   - `subscription_status` (string, optional): status of the subscriber on this list.
@@ -54,16 +64,6 @@ add, change email).
   - `per_page` (number, required): page size used.
   - `page` (number, required): current page number.
   - `query` (string, optional): applied filter (when present).
-
-- `LMCListMemberStatus`
-  - `"subscribed" | "unsubscribed" | "blocked"`.
-
-- `LMCSubscriptionStatus`
-  - `"enabled" | "disabled" | "blocklisted" | "unconfirmed" | "bounced"`.
-
-- `LMCSubscribeOptions`
-  - `preconfirm` (boolean, optional): preconfirm subscriptions (default `true`).
-  - `status` (LMCSubscriptionStatus, optional): override subscriber status.
 
 - `LMCBulkSubscription`
   - `email` (string, required): subscriber email.
