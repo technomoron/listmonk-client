@@ -1,10 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.LMCResponse = void 0;
-/**
- * Minimal Listmonk API client with Basic/Bearer auth and helper methods.
- * Borrowed the response wrapper pattern from api-client-base, but removed tokens/retries.
- */
 const node_buffer_1 = require("node:buffer");
 class LMCResponse {
     constructor(response = {}) {

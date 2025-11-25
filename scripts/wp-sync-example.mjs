@@ -12,6 +12,7 @@
  */
 import { config as loadEnv } from "dotenv";
 import { Sequelize, DataTypes } from "sequelize";
+
 import { ListMonkClient } from "../dist/esm/index.js";
 
 loadEnv({ path: new URL("../.env", import.meta.url).pathname });

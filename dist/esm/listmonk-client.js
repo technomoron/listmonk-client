@@ -1,7 +1,3 @@
-/**
- * Minimal Listmonk API client with Basic/Bearer auth and helper methods.
- * Borrowed the response wrapper pattern from api-client-base, but removed tokens/retries.
- */
 import { Buffer } from "node:buffer";
 export class LMCResponse {
     constructor(response = {}) {

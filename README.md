@@ -117,17 +117,29 @@ const client = new ListMonkClient({
   user: "admin",
   token: "your-token",
 });
+
+// Example call
+client.listAllLists().then((res) => {
+  if (res.success && res.data) {
+    console.log(
+      "Lists:",
+      res.data.map((l) => l.name),
+    );
+  }
+});
 ```
 
 All methods return `LMCResponse<T>`:
 
 ```ts
+/* eslint-disable @typescript-eslint/no-unused-vars */
 type LMCResponse<T> = {
   success: boolean;
   code: number;
   message: string;
   data: T | null;
 };
+/* eslint-enable @typescript-eslint/no-unused-vars */
 ```
 
 Use `response.isSuccess()` as a type guard, or inspect `success`/`data`.
@@ -137,6 +149,12 @@ Use `response.isSuccess()` as a type guard, or inspect `success`/`data`.
 ### `new ListMonkClient(config)`
 
 - `config: LMCConfig` (see Interfaces)
+
+### Low-level helpers
+
+- `client.get(path)`, `client.post(path, body?)`, `client.put(path, body?)`,
+  `client.delete(path, body?)`
+- Return `LMCResponse<T>` wrappers around Listmonk API calls.
 
 ### `client.listAllLists(visibility?)`
 
