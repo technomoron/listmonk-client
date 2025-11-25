@@ -6,7 +6,7 @@ export type {
   LMCListMemberStatus,
   LMCSubscriber,
   LMCSubscriberAttribs,
-  LMCSubscriberListMeta,
+  LMCSubscription,
   LMCSubscriberPage,
   LMCSubscribeOptions,
   LMCListRecord,

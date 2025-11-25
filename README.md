@@ -19,7 +19,7 @@ add, change email).
   - `message`: human-readable status text.
   - `data`: typed payload or `null`.
 - `LMCSubscriberAttribs`: arbitrary JSON-safe attributes attached to a subscriber.
-- `LMCSubscriberListMeta`
+- `LMCSubscription`
   - `id`: numeric list id.
   - `subscription_status`: status of the subscriber on this list.
 - `LMCSubscriber`
@@ -29,7 +29,7 @@ add, change email).
   - `name`: subscriber display name.
   - `attribs`: `LMCSubscriberAttribs` custom attributes.
   - `status`: global subscriber status (e.g., enabled, blocklisted).
-  - `lists`: optional `LMCSubscriberListMeta[]` memberships (minimal form).
+  - `lists`: optional memberships; entries are either minimal `LMCSubscription` or full `LMCListRecord`.
   - `created_at`, `updated_at`: ISO timestamps.
 - `LMCListRecord`
   - Full list object from the Listmonk `/lists` endpoint.
@@ -53,7 +53,7 @@ add, change email).
 - `LMCBulkAddResult`
   - `created`, `added`: subscribers created or attached.
   - `skippedBlocked`, `skippedUnsubscribed`: emails not added due to status.
-  - `memberships`: `{ email; lists?: LMCSubscriberListMeta[] }[]` snapshot.
+  - `memberships`: `{ email; lists?: LMCSubscription[] }[]` snapshot.
 
 ## Installation
 
@@ -149,7 +149,7 @@ Bulk create/add subscribers.
   - `added: LMCSubscriber[]`
   - `skippedBlocked: string[]`
   - `skippedUnsubscribed: string[]`
-  - `memberships?: { email: string; lists?: LMCSubscriberListMeta[] }[]` (current
+  - `memberships?: { email: string; lists?: LMCSubscription[] }[]` (current
     lists seen for each processed email)
 
 ### `client.deleteSubscriber(id)`

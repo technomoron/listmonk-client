@@ -14,7 +14,7 @@ import { Buffer } from "node:buffer";
  *   - `debug`: log fetch details for troubleshooting.
  *   - `listPageSize`: default `per_page` to use when paging list endpoints.
  * - `LMCSubscriberAttribs`: arbitrary JSON-safe attributes stored with a subscriber.
- * - `LMCSubscriberListMeta`: minimal list membership summary for a subscriber.
+ * - `LMCSubscription`: minimal list membership summary for a subscriber.
  *   - `id`: numeric list id.
  *   - `subscription_status`: status of the subscriber on this list.
  * - `LMCSubscriber`: a Listmonk subscriber record.
@@ -22,7 +22,7 @@ import { Buffer } from "node:buffer";
  *   - `email`, `name`: subscriber contact info.
  *   - `attribs`: custom attributes bag.
  *   - `status`: global subscriber status.
- *   - `lists`: optional `LMCSubscriberListMeta[]` membership entries.
+ *   - `lists`: optional `LMCSubscription[]` membership entries.
  *   - `created_at`/`updated_at`: ISO timestamps.
  * - `LMCListRecord`: full list record returned by Listmonk list endpoints.
  *   - `id`: numeric list id (primary key).
@@ -61,7 +61,7 @@ type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
 
 export type LMCSubscriberAttribs = Record<string, JsonValue>;
 
-export interface LMCSubscriberListMeta {
+export interface LMCSubscription {
   id: number;
   subscription_status?: string;
 }
@@ -75,7 +75,7 @@ export interface LMCSubscriber {
   status: string;
   created_at?: string;
   updated_at?: string;
-  lists?: Array<LMCSubscriberListMeta | LMCListRecord>;
+  lists?: Array<LMCSubscription | LMCListRecord>;
 }
 
 export interface LMCListRecord {
@@ -111,7 +111,7 @@ export interface LMCBulkAddResult {
   added: LMCSubscriber[];
   skippedBlocked: string[];
   skippedUnsubscribed: string[];
-  memberships?: { email: string; lists?: LMCSubscriberListMeta[] }[];
+  memberships?: { email: string; lists?: LMCSubscription[] }[];
 }
 
 export interface LMCSubscribeOptions {
@@ -513,7 +513,7 @@ export default class ListMonkClient {
     const skippedBlocked: string[] = [];
     const skippedUnsubscribed: string[] = [];
     const addIds: number[] = [];
-    const memberships: { email: string; lists?: LMCSubscriberListMeta[] }[] = [];
+    const memberships: { email: string; lists?: LMCSubscription[] }[] = [];
     const attachToList = options.attachToList ?? true;
 
     for (const entry of deduped.values()) {
