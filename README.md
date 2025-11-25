@@ -129,22 +129,6 @@ Use `response.isSuccess()` as a type guard, or inspect `success`/`data`.
   - Basic auth only (user + token).
 
 
-### `client.get<T>(path)`
-
-Generic GET helper. Returns `LMCResponse<T>`.
-
-### `client.post<T>(path, body?)`
-
-Generic POST helper. Returns `LMCResponse<T>`.
-
-### `client.put<T>(path, body?)`
-
-Generic PUT helper. Returns `LMCResponse<T>`.
-
-### `client.delete<T>(path, body?)`
-
-Generic DELETE helper. Returns `LMCResponse<T>`.
-
 ### `client.subscribe(listId, email, name?, attribs?, options?)`
 
 Create a subscriber (if it doesn't exist) and subscribe it to a list.
