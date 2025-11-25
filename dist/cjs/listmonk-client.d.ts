@@ -1,53 +1,65 @@
 /**
  * API interface quick reference
  * - `LMCConfig`: configure authentication and timeouts.
- *   - `apiURL`: base API URL (required).
- *   - `user`: Basic auth username (required when using `basic` auth).
- *   - `token`: API token or password used for either auth mode.
- *   - `timeoutMS`: abort requests after the given milliseconds (default 15000).
- *   - `debug`: log fetch details for troubleshooting.
- *   - `listPageSize`: default `per_page` to use when paging list endpoints.
- * - `LMCSubscriberAttribs`: arbitrary JSON-safe attributes stored with a subscriber.
- * - `LMCSubscription`: minimal list membership summary for a subscriber.
- *   - `id`: numeric list id.
- *   - `subscription_status`: status of the subscriber on this list.
- * - `LMCSubscriber`: a Listmonk subscriber record.
- *   - `id`, `uuid`: subscriber identifiers.
- *   - `email`, `name`: subscriber contact info.
- *   - `attribs`: custom attributes bag.
- *   - `status`: global subscriber status.
- *   - `lists`: optional `LMCSubscription[]` membership entries.
- *   - `created_at`/`updated_at`: ISO timestamps.
- * - `LMCListRecord`: full list record returned by Listmonk list endpoints.
- *   - `id`: numeric list id (primary key).
- *   - `uuid`: optional list UUID.
- *   - `name`: display name for the list.
- *   - `type`: list type as reported by Listmonk (e.g., public/opt-in).
- *   - `tags`: string array of list tags.
- *   - `created_at`/`updated_at`: ISO timestamps for the list.
- *   - `subscription_status`: merged membership status when attached to a subscriber.
+ *   - `apiURL` (string, required): base API URL.
+ *   - `user` (string, required): Basic auth username.
+ *   - `token` (string, required): Basic auth token/password.
+ *   - `timeoutMS` (number, optional): request timeout in ms (default 15000).
+ *   - `debug` (boolean, optional): log fetch details.
+ *   - `listPageSize` (number, optional): default `per_page` for paging.
+ * - `LMCSubscriberAttribs`: arbitrary JSON-safe attributes for a subscriber.
+ * - `LMCSubscription`: minimal list membership summary.
+ *   - `id` (number, required): list id.
+ *   - `subscription_status` (string, optional): status on the list.
+ * - `LMCSubscriber`: subscriber record.
+ *   - `id` (number, required): subscriber id.
+ *   - `uuid` (string, required): subscriber UUID.
+ *   - `email` (string, required): subscriber email.
+ *   - `name` (string, required): subscriber name.
+ *   - `attribs` (LMCSubscriberAttribs, required): custom attributes.
+ *   - `status` (string, required): global subscriber status.
+ *   - `lists` (array, optional): `LMCSubscription` or `LMCListRecord` entries.
+ *   - `created_at` (string, optional): created timestamp.
+ *   - `updated_at` (string, optional): updated timestamp.
+ * - `LMCListRecord`: full list record returned by list endpoints.
+ *   - `id` (number, required): list id.
+ *   - `uuid` (string, optional): list UUID.
+ *   - `name` (string, optional): list name.
+ *   - `type` (string, optional): list type (e.g., public/opt-in).
+ *   - `tags` (string[], optional): list tags.
+ *   - `created_at` (string, optional): created timestamp.
+ *   - `updated_at` (string, optional): updated timestamp.
+ *   - `subscription_status` (string, optional): status when merged with a subscriber.
  * - `LMCSubscriberPage`: paginated subscriber results.
- *   - `results`: array of `LMCSubscriber` entries.
- *   - `total`: total matching subscribers.
- *   - `per_page`: page size for the query.
- *   - `page`: current page number.
- *   - `query`: optional filter applied.
+ *   - `results` (LMCSubscriber[], required): page of subscribers.
+ *   - `total` (number, required): total matches for the query.
+ *   - `per_page` (number, required): page size.
+ *   - `page` (number, required): current page number.
+ *   - `query` (string, optional): applied filter.
  * - `LMCBulkSubscription`: shape of bulk-add entries.
- *   - `email`, `name`, `uid`: identifying fields for the subscriber.
- *   - `attribs`: optional custom attributes (uid is mirrored here when present).
+ *   - `email` (string, required): subscriber email.
+ *   - `name` (string, optional): subscriber name.
+ *   - `uid` (string, optional): caller-defined unique id.
+ *   - `attribs` (LMCSubscriberAttribs, optional): custom attributes; `uid` is mirrored when present.
+ * - `LMCSubscriptionSnapshot`: membership snapshot for a processed email.
+ *   - `email` (string, required): processed email.
+ *   - `lists` (LMCSubscription[], optional): memberships observed.
  * - `LMCBulkAddResult`: outcome of `addSubscribersToList`.
- *   - `created`: newly created subscribers.
- *   - `added`: existing subscribers attached to the list.
- *   - `skippedBlocked`/`skippedUnsubscribed`: emails not added due to status.
- *   - `memberships`: membership snapshots for each processed email.
+ *   - `created` (LMCSubscriber[], required): newly created subscribers.
+ *   - `added` (LMCSubscriber[], required): existing subscribers attached.
+ *   - `skippedBlocked` (string[], required): emails skipped due to blocklist.
+ *   - `skippedUnsubscribed` (string[], required): emails skipped due to unsubscribed status.
+ *   - `memberships` (LMCSubscriptionSnapshot[], optional): membership snapshots.
+ * - `LMCSubscriptionStatus`: allowed subscription statuses for subscribe requests.
+ *   - `"enabled" | "disabled" | "blocklisted" | "unconfirmed" | "bounced"`.
  * - `LMCSubscribeOptions`: tune subscription behavior.
- *   - `preconfirm`: preconfirm subscriptions (default true).
- *   - `status`: override subscriber status (`"enabled" | "disabled" | "blocklisted" | "unconfirmed" | "bounced"`).
+ *   - `preconfirm` (boolean, optional): preconfirm subscriptions (default true).
+ *   - `status` (LMCSubscriptionStatus, optional): override subscriber status.
  * - `LMCResponseData<T>`: response envelope returned by all client methods.
- *   - `success`: boolean flag indicating the call succeeded.
- *   - `code`: HTTP status code from the API.
- *   - `message`: human-readable status detail (API message or status text).
- *   - `data`: typed payload when present, otherwise `null`.
+ *   - `success` (boolean, required): call succeeded flag.
+ *   - `code` (number, required): HTTP status code.
+ *   - `message` (string, required): status detail.
+ *   - `data` (T | null, required): typed payload or null.
  */
 type JsonPrimitive = string | number | boolean | null;
 type JsonValue = JsonPrimitive | JsonValue[] | {

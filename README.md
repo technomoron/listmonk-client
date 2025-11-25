@@ -7,69 +7,80 @@ add, change email).
 ## Interfaces (LMC*)
 
 - `LMCConfig`
-  - `apiURL`: base API URL (required).
-  - `token`: API token or password.
-  - `user`: Basic auth username (required when using `basic` auth).
-  - `timeoutMS`: request timeout in milliseconds (default `15000`).
-  - `debug`: enable request logging.
-  - `listPageSize`: default `per_page` to use when paging list endpoints.
+  - `apiURL` (string, required): base API URL.
+  - `token` (string, required): Basic auth token/password.
+  - `user` (string, required): Basic auth username.
+  - `timeoutMS` (number, optional): request timeout in milliseconds (default `15000`).
+  - `debug` (boolean, optional): enable request logging.
+  - `listPageSize` (number, optional): default `per_page` for paging.
 
 - `LMCResponseData<T>`
-  - `success`: boolean indicator the request succeeded.
-  - `code`: HTTP status code returned by the API.
-  - `message`: human-readable status text.
-  - `data`: typed payload or `null`.
+  - `success` (boolean, required): indicates the request succeeded.
+  - `code` (number, required): HTTP status code returned by the API.
+  - `message` (string, required): human-readable status text.
+  - `data` (T | null, required): typed payload or `null`.
 
-- `LMCSubscriberAttribs`: arbitrary JSON-safe attributes attached to a subscriber.
+- `LMCSubscriberAttribs`
+  - Record<string, JsonValue> (JSON-safe attributes).
 
 - `LMCSubscription`
-  - `id`: numeric list id.
-  - `subscription_status`: status of the subscriber on this list.
+  - `id` (number, required): numeric list id.
+  - `subscription_status` (string, optional): status of the subscriber on this list.
 
 - `LMCSubscriber`
-  - `id`: numeric subscriber id.
-  - `uuid`: subscriber UUID.
-  - `email`: subscriber email address.
-  - `name`: subscriber display name.
-  - `attribs`: `LMCSubscriberAttribs` custom attributes.
-  - `status`: global subscriber status (e.g., enabled, blocklisted).
-  - `lists`: optional memberships; entries are either minimal `LMCSubscription` or full `LMCListRecord`.
-  - `created_at`, `updated_at`: ISO timestamps.
+  - `id` (number, required): subscriber id.
+  - `uuid` (string, required): subscriber UUID.
+  - `email` (string, required): subscriber email address.
+  - `name` (string, required): subscriber display name.
+  - `attribs` (LMCSubscriberAttribs, required): custom attributes.
+  - `status` (string, required): global subscriber status (e.g., enabled, blocklisted).
+  - `lists` (array, optional): `LMCSubscription` or `LMCListRecord` entries.
+  - `created_at` (string, optional): created timestamp.
+  - `updated_at` (string, optional): updated timestamp.
 
 - `LMCListRecord`
-  - Full list object from the Listmonk `/lists` endpoint.
-  - `id`: numeric list id (primary key).
-  - `uuid`: optional list UUID.
-  - `name`: display name for the list.
-  - `type`: list type as reported by Listmonk (e.g., public/opt-in).
-  - `tags`: string array of list tags.
-  - `created_at`, `updated_at`: ISO timestamps for the list itself.
-  - `subscription_status`: merged membership status when attached to a subscriber.
+  - `id` (number, required): numeric list id.
+  - `uuid` (string, optional): list UUID.
+  - `name` (string, optional): display name.
+  - `type` (string, optional): list type (e.g., public/opt-in).
+  - `tags` (string[], optional): list tags.
+  - `created_at` (string, optional): list created timestamp.
+  - `updated_at` (string, optional): list updated timestamp.
+  - `subscription_status` (string, optional): merged membership status when attached to a subscriber.
 
 - `LMCSubscriberPage`
-  - `results`: `LMCSubscriber[]`.
-  - `total`: total matching subscribers for the query.
-  - `per_page`: page size used.
-  - `page`: current page number.
-  - `query`: optional filter applied (when present).
+  - `results` (LMCSubscriber[], required): page of subscribers.
+  - `total` (number, required): total matching subscribers for the query.
+  - `per_page` (number, required): page size used.
+  - `page` (number, required): current page number.
+  - `query` (string, optional): applied filter (when present).
 
-- `LMCListMemberStatus`: `"subscribed" | "unsubscribed" | "blocked"`.
+- `LMCListMemberStatus`
+  - `"subscribed" | "unsubscribed" | "blocked"`.
+
+- `LMCSubscriptionStatus`
+  - `"enabled" | "disabled" | "blocklisted" | "unconfirmed" | "bounced"`.
 
 - `LMCSubscribeOptions`
-  - `preconfirm`: preconfirm subscriptions (default `true`).
-  - `status`: override subscriber status (`LMCSubscriptionStatus`).
-- `LMCSubscriptionStatus`: `"enabled" | "disabled" | "blocklisted" | "unconfirmed" | "bounced"`.
+  - `preconfirm` (boolean, optional): preconfirm subscriptions (default `true`).
+  - `status` (LMCSubscriptionStatus, optional): override subscriber status.
 
 - `LMCBulkSubscription`
-  - `email`: subscriber email (required).
-  - `name`: display name (optional).
-  - `uid`: caller-defined unique id for deduplication (optional).
-  - `attribs`: `LMCSubscriberAttribs` (optional); `uid` is mirrored into attribs when present.
+  - `email` (string, required): subscriber email.
+  - `name` (string, optional): display name.
+  - `uid` (string, optional): caller-defined unique id for deduplication.
+  - `attribs` (LMCSubscriberAttribs, optional): attributes; `uid` is mirrored when present.
+
+- `LMCSubscriptionSnapshot`
+  - `email` (string, required): processed email.
+  - `lists` (LMCSubscription[], optional): memberships observed.
 
 - `LMCBulkAddResult`
-  - `created`, `added`: subscribers created or attached.
-  - `skippedBlocked`, `skippedUnsubscribed`: emails not added due to status.
-  - `memberships`: `LMCSubscriptionSnapshot[]` (email + current list memberships).
+  - `created` (LMCSubscriber[], required): subscribers created.
+  - `added` (LMCSubscriber[], required): existing subscribers attached.
+  - `skippedBlocked` (string[], required): emails skipped due to blocklist.
+  - `skippedUnsubscribed` (string[], required): emails skipped due to unsubscribed status.
+  - `memberships` (LMCSubscriptionSnapshot[], optional): membership snapshots.
 
 ## Installation
 
