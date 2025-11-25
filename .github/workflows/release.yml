@@ -1,0 +1,51 @@
+name: Build and Release Package
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch: # Allow manual triggering
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1: Checkout the code
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      # Step 2: Set up Node.js
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+
+      # Step 3: Install dependencies
+      - name: Install Dependencies
+        run: npm install
+
+      # Step 4: Build the package
+      - name: Build Package
+        run: npm run build
+
+      # Step 5: Pack the npm package
+      - name: Pack npm Package
+        run: npm pack
+        id: pack
+
+      - name: Debug File Locations
+        run: |
+          echo "Current directory:"
+          pwd
+          echo "Files in current directory:"
+          ls -al
+
+      # Step 6: Create a GitHub Release and upload the `.tgz` file
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            technomoron-listmonk-api*.tgz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

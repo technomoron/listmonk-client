@@ -1,0 +1,11 @@
+node_modules/
+package-lock.json
+pnpm-lock.yaml
+agent.md
+agents.md
+# Ignore agent stuff used to create tests.
+AGENTS.md
+junit.xml
+vitest-output.txt
+.vitest-cache/
+.env
