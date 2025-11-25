@@ -336,12 +336,13 @@ export default class ListMonkClient {
                 continue;
             }
             const listInfo = existing.lists?.find((l) => l.id === listId);
-            if (listInfo?.subscription_status === "unsubscribed") {
+            const membershipStatus = listInfo?.subscription_status;
+            if (membershipStatus === "unsubscribed") {
                 skippedUnsubscribed.push(existing.email);
                 memberships.push({ email: existing.email, lists: existing.lists });
                 continue;
             }
-            if (listInfo && listInfo.subscription_status !== "unsubscribed") {
+            if (listInfo && membershipStatus !== "unsubscribed") {
                 // Already on the list in a good state
                 if (attachToList) {
                     added.push(existing);

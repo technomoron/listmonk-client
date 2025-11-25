@@ -28,7 +28,7 @@
  *
  * - `LMCSubscription`: minimal list membership summary.
  *   - `id` (number, required): list id.
- *   - `subscription_status` (string, optional): status on the list.
+ *   - `subscription_status` (LMCSubscriptionStatus, optional): status on the list.
  *
  * - `LMCListRecord`: full list record returned by list endpoints.
  *   - `id` (number, required): list id.
@@ -38,7 +38,7 @@
  *   - `tags` (string[], optional): list tags.
  *   - `created_at` (string, optional): created timestamp.
  *   - `updated_at` (string, optional): updated timestamp.
- *   - `subscription_status` (string, optional): status when merged with a subscriber.
+ *   - `subscription_status` (LMCSubscriptionStatus, optional): status when merged with a subscriber.
  *
  * - `LMCSubscriber`: subscriber record.
  *   - `id` (number, required): subscriber id.
@@ -94,7 +94,7 @@ export interface LMCResponseData<T = unknown> {
     data: T | null;
 }
 export type LMCSubscriberAttribs = Record<string, JsonValue>;
-export type LMCSubscriptionStatus = "enabled" | "disabled" | "blocklisted" | "unconfirmed" | "bounced";
+export type LMCSubscriptionStatus = "enabled" | "disabled" | "blocklisted" | "unconfirmed" | "bounced" | "unsubscribed";
 export interface LMCSubscribeOptions {
     preconfirm?: boolean;
     status?: LMCSubscriptionStatus;
@@ -102,7 +102,7 @@ export interface LMCSubscribeOptions {
 export type LMCListMemberStatus = "subscribed" | "unsubscribed" | "blocked";
 export interface LMCSubscription {
     id: number;
-    subscription_status?: string;
+    subscription_status?: LMCSubscriptionStatus;
 }
 export interface LMCListRecord {
     id: number;
@@ -112,7 +112,7 @@ export interface LMCListRecord {
     tags?: string[];
     created_at?: string;
     updated_at?: string;
-    subscription_status?: string;
+    subscription_status?: LMCSubscriptionStatus;
 }
 export interface LMCSubscriber {
     id: number;

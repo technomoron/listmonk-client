@@ -34,7 +34,7 @@ import { Buffer } from "node:buffer";
  *
  * - `LMCSubscription`: minimal list membership summary.
  *   - `id` (number, required): list id.
- *   - `subscription_status` (string, optional): status on the list.
+ *   - `subscription_status` (LMCSubscriptionStatus, optional): status on the list.
  *
  * - `LMCListRecord`: full list record returned by list endpoints.
  *   - `id` (number, required): list id.
@@ -44,7 +44,7 @@ import { Buffer } from "node:buffer";
  *   - `tags` (string[], optional): list tags.
  *   - `created_at` (string, optional): created timestamp.
  *   - `updated_at` (string, optional): updated timestamp.
- *   - `subscription_status` (string, optional): status when merged with a subscriber.
+ *   - `subscription_status` (LMCSubscriptionStatus, optional): status when merged with a subscriber.
  *
  * - `LMCSubscriber`: subscriber record.
  *   - `id` (number, required): subscriber id.
@@ -107,7 +107,8 @@ export type LMCSubscriptionStatus =
   | "disabled"
   | "blocklisted"
   | "unconfirmed"
-  | "bounced";
+  | "bounced"
+  | "unsubscribed";
 
 export interface LMCSubscribeOptions {
   preconfirm?: boolean;
@@ -118,7 +119,7 @@ export type LMCListMemberStatus = "subscribed" | "unsubscribed" | "blocked";
 
 export interface LMCSubscription {
   id: number;
-  subscription_status?: string;
+  subscription_status?: LMCSubscriptionStatus;
 }
 
 export interface LMCListRecord {
@@ -129,7 +130,7 @@ export interface LMCListRecord {
   tags?: string[];
   created_at?: string;
   updated_at?: string;
-  subscription_status?: string;
+  subscription_status?: LMCSubscriptionStatus;
 }
 
 export interface LMCSubscriber {
@@ -620,13 +621,16 @@ export default class ListMonkClient {
       }
 
       const listInfo = existing.lists?.find((l) => l.id === listId);
-      if (listInfo?.subscription_status === "unsubscribed") {
+      const membershipStatus = listInfo?.subscription_status as
+        | string
+        | undefined;
+      if (membershipStatus === "unsubscribed") {
         skippedUnsubscribed.push(existing.email);
         memberships.push({ email: existing.email, lists: existing.lists });
         continue;
       }
 
-      if (listInfo && listInfo.subscription_status !== "unsubscribed") {
+      if (listInfo && membershipStatus !== "unsubscribed") {
         // Already on the list in a good state
         if (attachToList) {
           added.push(existing);
