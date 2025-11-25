@@ -104,10 +104,10 @@ export interface LMCBulkAddResult {
     skippedUnsubscribed: string[];
     memberships?: LMCSubscriptionSnapshot[];
 }
-export type LMCSubscriberStatus = "enabled" | "disabled" | "blocklisted" | "unconfirmed" | "bounced";
+export type LMCSubscriptionStatus = "enabled" | "disabled" | "blocklisted" | "unconfirmed" | "bounced";
 export interface LMCSubscribeOptions {
     preconfirm?: boolean;
-    status?: LMCSubscriberStatus;
+    status?: LMCSubscriptionStatus;
 }
 export interface LMCConfig {
     apiURL: string;

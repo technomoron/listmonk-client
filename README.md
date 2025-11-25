@@ -57,7 +57,8 @@ add, change email).
 
 - `LMCSubscribeOptions`
   - `preconfirm`: preconfirm subscriptions (default `true`).
-  - `status`: override subscriber status (`"enabled" | "disabled" | "blocklisted" | "unconfirmed" | "bounced"`).
+  - `status`: override subscriber status (`LMCSubscriptionStatus`).
+- `LMCSubscriptionStatus`: `"enabled" | "disabled" | "blocklisted" | "unconfirmed" | "bounced"`.
 
 - `LMCBulkSubscription`
   - `email`: subscriber email (required).

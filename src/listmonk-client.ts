@@ -118,7 +118,7 @@ export interface LMCBulkAddResult {
   memberships?: LMCSubscriptionSnapshot[];
 }
 
-export type LMCSubscriberStatus =
+export type LMCSubscriptionStatus =
   | "enabled"
   | "disabled"
   | "blocklisted"
@@ -127,7 +127,7 @@ export type LMCSubscriberStatus =
 
 export interface LMCSubscribeOptions {
   preconfirm?: boolean;
-  status?: LMCSubscriberStatus;
+  status?: LMCSubscriptionStatus;
 }
 
 export interface LMCConfig {
