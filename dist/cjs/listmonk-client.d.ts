@@ -178,8 +178,7 @@ export default class ListMonkClient {
     delete<T>(command: string, body?: Record<string, unknown>): Promise<LMCResponse<T>>;
     deleteSubscriber(id: number): Promise<LMCResponse<boolean>>;
     deleteSubscribers(ids: number[]): Promise<LMCResponse<boolean>>;
-    subscribe(input: {
-        listId: number;
+    subscribe(listId: number, input: {
         email: string;
         name?: string;
         attribs?: LMCSubscriberAttribs;

@@ -403,15 +403,15 @@ export default class ListMonkClient {
   }
 
   async subscribe(
+    listId: number,
     input: {
-      listId: number;
       email: string;
       name?: string;
       attribs?: LMCSubscriberAttribs;
     },
     options: LMCSubscribeOptions = {},
   ): Promise<LMCResponse<LMCSubscriber>> {
-    const lists: number[] = [input.listId];
+    const lists: number[] = [listId];
 
     const body = {
       email: input.email,
@@ -565,8 +565,8 @@ export default class ListMonkClient {
       if (!existing) {
         const createRes = attachToList
           ? await this.subscribe(
+              listId,
               {
-                listId,
                 email: entry.email,
                 name: entry.name ?? "",
                 attribs: entryAttribs,

@@ -174,8 +174,8 @@ export default class ListMonkClient {
         ids.forEach((id) => params.append("id", String(id)));
         return this.delete(`/subscribers?${params.toString()}`);
     }
-    async subscribe(input, options = {}) {
-        const lists = [input.listId];
+    async subscribe(listId, input, options = {}) {
+        const lists = [listId];
         const body = {
             email: input.email,
             name: input.name ?? "",
@@ -293,8 +293,7 @@ export default class ListMonkClient {
                 : existingByEmail.get(emailKey);
             if (!existing) {
                 const createRes = attachToList
-                    ? await this.subscribe({
-                        listId,
+                    ? await this.subscribe(listId, {
                         email: entry.email,
                         name: entry.name ?? "",
                         attribs: entryAttribs,
