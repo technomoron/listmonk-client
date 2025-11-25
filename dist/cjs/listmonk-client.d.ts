@@ -100,6 +100,7 @@ export interface LMCSubscribeOptions {
     status?: LMCSubscriptionStatus;
 }
 export type LMCListMemberStatus = "subscribed" | "unsubscribed" | "blocked";
+export type LMCListVisibility = "private" | "public";
 export interface LMCSubscription {
     id: number;
     subscription_status?: LMCSubscriptionStatus;
@@ -149,6 +150,18 @@ export interface LMCBulkAddResult {
     skippedUnsubscribed: string[];
     memberships?: LMCSubscriptionSnapshot[];
 }
+export interface LMCUser {
+    email: string;
+    name?: string;
+    attribs?: LMCSubscriberAttribs;
+    uid?: string;
+}
+export interface LMCSyncUsersResult {
+    blocked: number;
+    unsubscribed: number;
+    added: number;
+    updated: number;
+}
 export declare class LMCResponse<T = unknown> implements LMCResponseData<T> {
     success: boolean;
     code: number;
@@ -178,6 +191,7 @@ export default class ListMonkClient {
     delete<T>(command: string, body?: Record<string, unknown>): Promise<LMCResponse<T>>;
     deleteSubscriber(id: number): Promise<LMCResponse<boolean>>;
     deleteSubscribers(ids: number[]): Promise<LMCResponse<boolean>>;
+    listAllLists(visibility?: LMCListVisibility | "all"): Promise<LMCResponse<LMCListRecord[]>>;
     subscribe(listId: number, input: {
         email: string;
         name?: string;
@@ -190,8 +204,16 @@ export default class ListMonkClient {
     addSubscribersToList(listId: number, entries: LMCBulkSubscription[], options?: {
         attachToList?: boolean;
     }): Promise<LMCResponse<LMCBulkAddResult>>;
-    changeEmail(currentEmail: string, newEmail: string): Promise<LMCResponse<LMCSubscriber>>;
-    private findSubscriberByEmail;
+    syncUsersToList(listId: number, users: LMCUser[]): Promise<LMCResponse<LMCSyncUsersResult>>;
+    updateUser(identifier: {
+        id?: number;
+        uuid?: string;
+        email?: string;
+    }, updates: Partial<LMCUser>): Promise<LMCResponse<LMCSubscriber>>;
+    private findSubscriber;
     private translateStatus;
+    private areAttribsEqual;
+    private stableStringify;
+    private buildEqualityQuery;
 }
 export {};

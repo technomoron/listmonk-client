@@ -38,7 +38,9 @@
     "eslint-plugin-import": "^2.32.0",
     "eslint-plugin-markdown": "^5.1.0",
     "jsonc-eslint-parser": "^2.4.1",
+    "mysql2": "^3.11.3",
     "prettier": "^3.6.2",
+    "sequelize": "^6.37.3",
     "stylelint": "^16.26.0",
     "stylelint-config-standard-scss": "^16.0.0",
     "typescript": "^5.9.2"

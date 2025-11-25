@@ -116,6 +116,7 @@ export interface LMCSubscribeOptions {
 }
 
 export type LMCListMemberStatus = "subscribed" | "unsubscribed" | "blocked";
+export type LMCListVisibility = "private" | "public";
 
 export interface LMCSubscription {
   id: number;
@@ -171,6 +172,20 @@ export interface LMCBulkAddResult {
   skippedBlocked: string[];
   skippedUnsubscribed: string[];
   memberships?: LMCSubscriptionSnapshot[];
+}
+
+export interface LMCUser {
+  email: string;
+  name?: string;
+  attribs?: LMCSubscriberAttribs;
+  uid?: string;
+}
+
+export interface LMCSyncUsersResult {
+  blocked: number;
+  unsubscribed: number;
+  added: number;
+  updated: number;
 }
 
 export class LMCResponse<T = unknown> implements LMCResponseData<T> {
@@ -401,6 +416,43 @@ export default class ListMonkClient {
     const params = new URLSearchParams();
     ids.forEach((id) => params.append("id", String(id)));
     return this.delete<boolean>(`/subscribers?${params.toString()}`);
+  }
+
+  async listAllLists(
+    visibility: LMCListVisibility | "all" = "all",
+  ): Promise<LMCResponse<LMCListRecord[]>> {
+    const params = new URLSearchParams();
+    params.set("per_page", "all");
+    if (visibility !== "all") {
+      params.set("type", visibility);
+    }
+
+    type LMCListResultsPayload =
+      | LMCListRecord[]
+      | { results?: LMCListRecord[] | undefined };
+
+    const res = await this.get<LMCListResultsPayload>(
+      `/lists?${params.toString()}`,
+    );
+
+    if (!res.success) {
+      return res as unknown as LMCResponse<LMCListRecord[]>;
+    }
+
+    const payload = res.data;
+    const results = Array.isArray(payload)
+      ? payload
+      : payload && Array.isArray(payload.results)
+        ? payload.results
+        : null;
+
+    if (!results) {
+      return LMCResponse.error("Unexpected response while fetching lists", {
+        code: res.code,
+      });
+    }
+
+    return LMCResponse.ok(results, { code: res.code, message: res.message });
   }
 
   async subscribe(
@@ -667,49 +719,291 @@ export default class ListMonkClient {
     });
   }
 
-  async changeEmail(
-    currentEmail: string,
-    newEmail: string,
-  ): Promise<LMCResponse<LMCSubscriber>> {
-    const trimmedNew = newEmail.trim();
-    const trimmedCurrent = currentEmail.trim();
-    if (!trimmedCurrent) {
-      return LMCResponse.error("Current email is required", { code: 400 });
+  async syncUsersToList(
+    listId: number,
+    users: LMCUser[],
+  ): Promise<LMCResponse<LMCSyncUsersResult>> {
+    if (!Number.isFinite(listId)) {
+      return LMCResponse.error("listId must be a number", { code: 400 });
     }
-    if (!trimmedNew) {
-      return LMCResponse.error("New email is required", { code: 400 });
+    if (users.length === 0) {
+      return LMCResponse.ok({
+        blocked: 0,
+        unsubscribed: 0,
+        added: 0,
+        updated: 0,
+      });
     }
 
-    const subscriber = await this.findSubscriberByEmail(trimmedCurrent);
+    type NormalizedUser = {
+      email: string;
+      name?: string;
+      attribs: LMCSubscriberAttribs;
+      uid: string;
+    };
+
+    const normalized: NormalizedUser[] = users.map((user) => ({
+      email: user.email.trim(),
+      name: user.name?.trim(),
+      attribs: user.attribs ?? {},
+      uid: (user.uid ?? "").trim(),
+    }));
+
+    const missingUid = normalized.find((u) => !u.uid);
+    if (missingUid) {
+      return LMCResponse.error("Each user must include a uid", { code: 400 });
+    }
+    const missingEmail = normalized.find((u) => !u.email);
+    if (missingEmail) {
+      return LMCResponse.error("Each user must include an email", {
+        code: 400,
+      });
+    }
+
+    const deduped = new Map<string, NormalizedUser>();
+    normalized.forEach((user) => {
+      deduped.set(user.uid, user);
+    });
+
+    const uids = Array.from(deduped.keys());
+    const emails = new Set<string>();
+    deduped.forEach((user) => emails.add(user.email.toLowerCase()));
+
+    const existingByUid = new Map<string, LMCSubscriber>();
+    const existingByEmail = new Map<string, LMCSubscriber>();
+    const lookupChunkSize = 2500;
+
+    const escapeValue = (value: string) => value.replace(/'/g, "''");
+
+    const fetchSubscribers = async (
+      values: string[],
+      buildQuery: (chunk: string[]) => string,
+    ) => {
+      for (let i = 0; i < values.length; i += lookupChunkSize) {
+        const chunk = values.slice(i, i + lookupChunkSize);
+        const query = buildQuery(chunk);
+        const perPage = Math.max(chunk.length, 50);
+        const res = await this.get<LMCSubscriberPage>(
+          `/subscribers?per_page=${perPage}&query=${query}`,
+        );
+        if (res.success && res.data) {
+          res.data.results.forEach((s) => {
+            const emailKey = s.email.toLowerCase();
+            existingByEmail.set(emailKey, s);
+            const subUid =
+              typeof s.attribs?.uid === "string" ? String(s.attribs.uid) : null;
+            if (subUid) {
+              existingByUid.set(subUid, s);
+            }
+          });
+        } else if (this.debug) {
+          console.warn("Lookup failed for chunk", res.code, res.message);
+        }
+      }
+    };
+
+    if (uids.length > 0) {
+      await fetchSubscribers(Array.from(uids), (chunk) => {
+        const inList = chunk.map((u) => `'${escapeValue(u)}'`).join(",");
+        return encodeURIComponent(`attribs->>'uid' IN (${inList})`);
+      });
+    }
+
+    if (emails.size > 0) {
+      await fetchSubscribers(Array.from(emails), (chunk) => {
+        const inList = chunk.map((e) => `'${escapeValue(e)}'`).join(",");
+        return encodeURIComponent(`email IN (${inList})`);
+      });
+    }
+
+    const counts: LMCSyncUsersResult = {
+      blocked: 0,
+      unsubscribed: 0,
+      added: 0,
+      updated: 0,
+    };
+    const addIds: number[] = [];
+
+    for (const entry of deduped.values()) {
+      const emailKey = entry.email.toLowerCase();
+      let existing =
+        existingByUid.get(entry.uid) ?? existingByEmail.get(emailKey);
+
+      if (!existing) {
+        const attribs: LMCSubscriberAttribs = { ...(entry.attribs ?? {}) };
+        attribs.uid = entry.uid;
+
+        const createRes = await this.subscribe(
+          listId,
+          {
+            email: entry.email,
+            name: entry.name ?? "",
+            attribs,
+          },
+          { preconfirm: true, status: "enabled" },
+        );
+        if (!createRes.success || !createRes.data) {
+          return createRes as unknown as LMCResponse<LMCSyncUsersResult>;
+        }
+        counts.added += 1;
+        continue;
+      }
+
+      if (existing.status === "blocklisted") {
+        counts.blocked += 1;
+        continue;
+      }
+
+      const listInfo = existing.lists?.find((l) => l.id === listId);
+      const membershipStatus = listInfo?.subscription_status as
+        | string
+        | undefined;
+      if (membershipStatus === "unsubscribed") {
+        counts.unsubscribed += 1;
+        continue;
+      }
+
+      const targetAttribs: LMCSubscriberAttribs = {
+        ...(existing.attribs ?? {}),
+        ...(entry.attribs ?? {}),
+      };
+      targetAttribs.uid = entry.uid;
+
+      const targetEmail = entry.email;
+      const targetName = entry.name ?? existing.name ?? "";
+
+      const needsEmailUpdate =
+        existing.email.toLowerCase() !== targetEmail.toLowerCase();
+      const needsNameUpdate = (existing.name ?? "") !== targetName;
+      const needsAttribUpdate = !this.areAttribsEqual(
+        existing.attribs,
+        targetAttribs,
+      );
+
+      if (needsEmailUpdate || needsNameUpdate || needsAttribUpdate) {
+        const updateRes = await this.put<LMCSubscriber>(
+          `/subscribers/${existing.id}`,
+          {
+            email: targetEmail,
+            name: targetName,
+            attribs: targetAttribs,
+          },
+        );
+        if (!updateRes.success || !updateRes.data) {
+          return updateRes as unknown as LMCResponse<LMCSyncUsersResult>;
+        }
+        existing = updateRes.data;
+        counts.updated += 1;
+      }
+
+      const listEntry = existing.lists?.find((l) => l.id === listId);
+      const onList =
+        listEntry &&
+        (listEntry as LMCSubscription).subscription_status !== "unsubscribed";
+      if (!onList) {
+        addIds.push(existing.id);
+        counts.added += 1;
+      }
+    }
+
+    if (addIds.length > 0) {
+      const addChunkSize = 2500;
+      for (let i = 0; i < addIds.length; i += addChunkSize) {
+        const chunk = addIds.slice(i, i + addChunkSize);
+        const res = await this.put(`/subscribers/lists/${listId}`, {
+          ids: chunk,
+          action: "add",
+        });
+        if (!res.success) {
+          return res as unknown as LMCResponse<LMCSyncUsersResult>;
+        }
+      }
+    }
+
+    return LMCResponse.ok(counts);
+  }
+
+  async updateUser(
+    identifier: { id?: number; uuid?: string; email?: string },
+    updates: Partial<LMCUser>,
+  ): Promise<LMCResponse<LMCSubscriber>> {
+    const { id, uuid, email } = identifier;
+    if (id === undefined && !uuid && !email) {
+      return LMCResponse.error("id, uuid, or email is required", {
+        code: 400,
+      });
+    }
+
+    if (!updates || Object.keys(updates).length === 0) {
+      return LMCResponse.error("No updates provided", { code: 400 });
+    }
+
+    const subscriber = await this.findSubscriber(identifier);
     if (!subscriber.success || !subscriber.data) {
       return subscriber;
     }
 
-    if (subscriber.data.email.toLowerCase() === trimmedNew.toLowerCase()) {
-      return LMCResponse.ok(subscriber.data, {
-        message: "Email already set to the provided value",
+    const existing = subscriber.data;
+    const nextAttribs: LMCSubscriberAttribs = {
+      ...(existing.attribs ?? {}),
+      ...(updates.attribs ?? {}),
+    };
+
+    if (updates.uid !== undefined) {
+      nextAttribs.uid = updates.uid;
+    } else if (
+      existing.attribs?.uid !== undefined &&
+      nextAttribs.uid === undefined
+    ) {
+      nextAttribs.uid = existing.attribs.uid;
+    }
+
+    const nextEmail = updates.email?.trim() ?? existing.email;
+    if (!nextEmail) {
+      return LMCResponse.error("Email is required", { code: 400 });
+    }
+
+    const nextName =
+      updates.name !== undefined ? updates.name : (existing.name ?? "");
+
+    return this.put<LMCSubscriber>(`/subscribers/${existing.id}`, {
+      email: nextEmail,
+      name: nextName,
+      attribs: nextAttribs,
+    });
+  }
+
+  private async findSubscriber(identifier: {
+    id?: number;
+    uuid?: string;
+    email?: string;
+  }): Promise<LMCResponse<LMCSubscriber>> {
+    if (identifier.id !== undefined) {
+      const res = await this.get<LMCSubscriber>(
+        `/subscribers/${identifier.id}`,
+      );
+      if (res.success && res.data) return res;
+      if (res.success) {
+        return LMCResponse.error("Subscriber not found", { code: 404 });
+      }
+      return res as LMCResponse<LMCSubscriber>;
+    }
+
+    const params = new URLSearchParams();
+    params.set("per_page", "1");
+
+    if (identifier.uuid) {
+      params.set("query", this.buildEqualityQuery("uuid", identifier.uuid));
+    } else if (identifier.email) {
+      params.set("query", this.buildEqualityQuery("email", identifier.email));
+    } else {
+      return LMCResponse.error("id, uuid, or email is required", {
+        code: 400,
       });
     }
 
-    const updateRes = await this.put<LMCSubscriber>(
-      `/subscribers/${subscriber.data.id}`,
-      {
-        email: trimmedNew,
-        name: subscriber.data.name,
-        attribs: subscriber.data.attribs,
-      },
-    );
-    if (!updateRes.success) return updateRes;
-    return updateRes;
-  }
-
-  private async findSubscriberByEmail(
-    email: string,
-  ): Promise<LMCResponse<LMCSubscriber>> {
-    const escape = (value: string) => value.replace(/'/g, "''");
-    const query = encodeURIComponent(`email = '${escape(email)}'`);
     const res = await this.get<LMCSubscriberPage>(
-      `/subscribers?per_page=1&query=${query}`,
+      `/subscribers?${params.toString()}`,
     );
     if (res.success && res.data && res.data.results.length > 0) {
       return LMCResponse.ok(res.data.results[0], {
@@ -717,7 +1011,10 @@ export default class ListMonkClient {
         message: res.message,
       });
     }
-    return LMCResponse.error("Subscriber not found", { code: 404 });
+    if (res.success) {
+      return LMCResponse.error("Subscriber not found", { code: 404 });
+    }
+    return res as unknown as LMCResponse<LMCSubscriber>;
   }
 
   private translateStatus(status: LMCListMemberStatus): {
@@ -734,5 +1031,34 @@ export default class ListMonkClient {
       default:
         return {};
     }
+  }
+
+  private areAttribsEqual(
+    a?: LMCSubscriberAttribs,
+    b?: LMCSubscriberAttribs,
+  ): boolean {
+    return this.stableStringify(a ?? {}) === this.stableStringify(b ?? {});
+  }
+
+  private stableStringify(value: JsonValue): string {
+    if (value === null || typeof value !== "object") {
+      return JSON.stringify(value);
+    }
+    if (Array.isArray(value)) {
+      return `[${value.map((v) => this.stableStringify(v)).join(",")}]`;
+    }
+    const entries = Object.entries(value as Record<string, JsonValue>).sort(
+      ([aKey], [bKey]) => aKey.localeCompare(bKey),
+    );
+    return `{${entries
+      .map(
+        ([key, val]) => `${JSON.stringify(key)}:${this.stableStringify(val)}`,
+      )
+      .join(",")}}`;
+  }
+
+  private buildEqualityQuery(field: string, value: string): string {
+    const escaped = value.replace(/'/g, "''");
+    return encodeURIComponent(`${field} = '${escaped}'`);
   }
 }

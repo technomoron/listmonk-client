@@ -33,6 +33,8 @@ add, change email).
 
 - `LMCListMemberStatus`
   - `"subscribed" | "unsubscribed" | "blocked"`.
+- `LMCListVisibility`
+  - `"private" | "public"` for list filtering.
 
 - `LMCSubscription`
   - `id` (number, required): numeric list id.
@@ -75,6 +77,16 @@ add, change email).
   - `uid` (string, optional): caller-defined unique id for deduplication.
   - `attribs` (LMCSubscriberAttribs, optional): attributes; `uid` is mirrored
     when present.
+- `LMCUser`
+  - `email` (string, required): subscriber email.
+  - `name` (string, optional): display name.
+  - `uid` (string, optional): caller-defined id; mirrored into `attribs.uid`.
+  - `attribs` (LMCSubscriberAttribs, optional): attributes; merged on update.
+- `LMCSyncUsersResult`
+  - `blocked` (number): subscribers skipped due to blocklist.
+  - `unsubscribed` (number): subscribers skipped due to unsubscribed status.
+  - `added` (number): subscribers added/attached to the list.
+  - `updated` (number): subscribers whose data changed.
 
 - `LMCSubscriptionSnapshot`
   - `email` (string, required): processed email.
@@ -126,6 +138,32 @@ Use `response.isSuccess()` as a type guard, or inspect `success`/`data`.
 
 - `config: LMCConfig` (see Interfaces)
 
+### `client.listAllLists(visibility?)`
+
+Fetch every list with an optional visibility filter.
+
+- `visibility`: `"public" | "private" | "all"` (default `all`).
+- Returns `LMCResponse<LMCListRecord[]>`.
+
+### `client.syncUsersToList(listId, users)`
+
+Upsert subscribers into a list by `uid`, updating email/name/attribs when they
+differ.
+
+- `listId`: target list id.
+- `users`: `LMCUser[]` (each entry must include `uid`).
+- Returns `LMCResponse<LMCSyncUsersResult>` with counts for `blocked`,
+  `unsubscribed`, `added`, `updated` (added and updated can overlap when both
+  occur for the same subscriber).
+
+### `client.updateUser(identifier, updates)`
+
+Update a subscriber by id, uuid, or email.
+
+- `identifier`: `{ id?: number; uuid?: string; email?: string }` (one required)
+- `updates`: `Partial<LMCUser>`; `uid` is mirrored into `attribs.uid` when set.
+- Returns `LMCResponse<LMCSubscriber>`.
+
 ### `client.subscribe(listId, { email, name?, attribs? }, options?)`
 
 Create a subscriber (if it doesn't exist) and subscribe it to a list.
@@ -170,13 +208,19 @@ Delete a single subscriber by id. Returns `LMCResponse<boolean>`.
 
 Delete many subscribers. Returns `LMCResponse<boolean>`.
 
-### `client.changeEmail(currentEmail, newEmail)`
-
-Finds by current email and issues a `PUT /subscribers/{id}` to set
-`email=newEmail`. Returns `LMCResponse<LMCSubscriber>` (updated subscriber).
-Preserves existing `attribs`/name.
-
 ## Debugging
 
 Set `debug: true` in the client config to log all requests/headers and follow
 API calls during tests or troubleshooting.
+
+## Example: WordPress user sync
+
+`scripts/wp-sync-example.mjs` shows how to:
+
+- Read WordPress users via Sequelize.
+- Sync them to a Listmonk list by `uid`/email/name (creates or updates).
+- Store the Listmonk subscriber id in a `listmonk_subscriber_id` usermeta row.
+
+Env vars expected: `WP_DB_HOST`, `WP_DB_USER`, `WP_DB_PASSWORD`, `WP_DB_NAME`,
+`WP_TABLE_PREFIX?`, `LISTMONK_URL`, `LISTMONK_USER`, `LISTMONK_TOKEN`,
+`LISTMONK_LIST_ID`.
