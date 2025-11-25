@@ -32,7 +32,7 @@
  *   - `per_page`: page size for the query.
  *   - `page`: current page number.
  *   - `query`: optional filter applied.
- * - `LMCBulkSubscriberInput`: shape of bulk-add entries.
+ * - `LMCBulkSubscription`: shape of bulk-add entries.
  *   - `email`, `name`, `uid`: identifying fields for the subscriber.
  *   - `attribs`: optional custom attributes (uid is mirrored here when present).
  * - `LMCBulkAddResult`: outcome of `addSubscribersToList`.
@@ -87,7 +87,7 @@ export interface LMCSubscriberPage {
     page: number;
 }
 export type LMCListMemberStatus = "subscribed" | "unsubscribed" | "blocked";
-export interface LMCBulkSubscriberInput {
+export interface LMCBulkSubscription {
     email: string;
     name?: string;
     uid?: string;
@@ -156,7 +156,7 @@ export default class ListMonkClient {
         page?: number;
         perPage?: number;
     }): Promise<LMCResponse<LMCSubscriberPage>>;
-    addSubscribersToList(listId: number, entries: LMCBulkSubscriberInput[], options?: {
+    addSubscribersToList(listId: number, entries: LMCBulkSubscription[], options?: {
         attachToList?: boolean;
     }): Promise<LMCResponse<LMCBulkAddResult>>;
     changeEmail(currentEmail: string, newEmail: string): Promise<LMCResponse<LMCSubscriber>>;

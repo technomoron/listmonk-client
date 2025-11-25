@@ -13,15 +13,19 @@ add, change email).
   - `timeoutMS`: request timeout in milliseconds (default `15000`).
   - `debug`: enable request logging.
   - `listPageSize`: default `per_page` to use when paging list endpoints.
+
 - `LMCResponseData<T>`
   - `success`: boolean indicator the request succeeded.
   - `code`: HTTP status code returned by the API.
   - `message`: human-readable status text.
   - `data`: typed payload or `null`.
+
 - `LMCSubscriberAttribs`: arbitrary JSON-safe attributes attached to a subscriber.
+
 - `LMCSubscription`
   - `id`: numeric list id.
   - `subscription_status`: status of the subscriber on this list.
+
 - `LMCSubscriber`
   - `id`: numeric subscriber id.
   - `uuid`: subscriber UUID.
@@ -31,6 +35,7 @@ add, change email).
   - `status`: global subscriber status (e.g., enabled, blocklisted).
   - `lists`: optional memberships; entries are either minimal `LMCSubscription` or full `LMCListRecord`.
   - `created_at`, `updated_at`: ISO timestamps.
+
 - `LMCListRecord`
   - Full list object from the Listmonk `/lists` endpoint.
   - `id`: numeric list id (primary key).
@@ -40,15 +45,23 @@ add, change email).
   - `tags`: string array of list tags.
   - `created_at`, `updated_at`: ISO timestamps for the list itself.
   - `subscription_status`: merged membership status when attached to a subscriber.
+
 - `LMCSubscriberPage`
   - `results`: `LMCSubscriber[]`.
   - `total`, `per_page`, `page`, `query`.
+
 - `LMCListMemberStatus`: `"subscribed" | "unsubscribed" | "blocked"`.
+
 - `LMCSubscribeOptions`
   - `preconfirm`: preconfirm subscriptions (default `true`).
   - `status`: override subscriber status (`"enabled" | "disabled" | "blocklisted" | "unconfirmed" | "bounced"`).
-- `LMCBulkSubscriberInput`
-  - `email`, `name`, `uid`, `attribs` (uid is mirrored into attribs when present).
+
+- `LMCBulkSubscription`
+  - `email`: subscriber email (required).
+  - `name`: display name (optional).
+  - `uid`: caller-defined unique id for deduplication (optional).
+  - `attribs`: `LMCSubscriberAttribs` (optional); `uid` is mirrored into attribs when present.
+
 - `LMCBulkAddResult`
   - `created`, `added`: subscribers created or attached.
   - `skippedBlocked`, `skippedUnsubscribed`: emails not added due to status.

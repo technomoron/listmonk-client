@@ -38,7 +38,7 @@ import { Buffer } from "node:buffer";
  *   - `per_page`: page size for the query.
  *   - `page`: current page number.
  *   - `query`: optional filter applied.
- * - `LMCBulkSubscriberInput`: shape of bulk-add entries.
+ * - `LMCBulkSubscription`: shape of bulk-add entries.
  *   - `email`, `name`, `uid`: identifying fields for the subscriber.
  *   - `attribs`: optional custom attributes (uid is mirrored here when present).
  * - `LMCBulkAddResult`: outcome of `addSubscribersToList`.
@@ -98,7 +98,7 @@ export interface LMCSubscriberPage {
 
 export type LMCListMemberStatus = "subscribed" | "unsubscribed" | "blocked";
 
-export interface LMCBulkSubscriberInput {
+export interface LMCBulkSubscription {
   email: string;
   name?: string;
   uid?: string;
@@ -422,7 +422,7 @@ export default class ListMonkClient {
 
   async addSubscribersToList(
     listId: number,
-    entries: LMCBulkSubscriberInput[],
+    entries: LMCBulkSubscription[],
     options: { attachToList?: boolean } = {},
   ): Promise<LMCResponse<LMCBulkAddResult>> {
     if (entries.length === 0) {
@@ -449,7 +449,7 @@ export default class ListMonkClient {
       return { ...entry, uid: derivedUid, attribs };
     });
 
-    const deduped = new Map<string, LMCBulkSubscriberInput>();
+    const deduped = new Map<string, LMCBulkSubscription>();
     normalized.forEach((entry) => {
       const key = entry.uid
         ? `uid:${entry.uid}`
