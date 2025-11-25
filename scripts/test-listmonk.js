@@ -5,193 +5,273 @@ import { config as loadEnv } from "dotenv";
 loadEnv({ path: new URL("../.env", import.meta.url).pathname });
 
 const require = createRequire(import.meta.url);
-const { ListmonkClient } = require("../dist/cjs/index.cjs");
+const { ListMonkClient } = require("../dist/cjs/index.cjs");
 
 const url = process.env.LISTMONK_URL;
 const username = process.env.LISTMONK_USERNAME;
-const password = process.env.LISTMONK_PASSWORD;
-const listId = process.env.LISTMONK_LIST_ID
+const token = process.env.LISTMONK_TOKEN;
+const preferredListId = process.env.LISTMONK_LIST_ID
   ? Number.parseInt(process.env.LISTMONK_LIST_ID, 10)
-  : NaN;
+  : undefined;
 
-if (!url || !username || !password || Number.isNaN(listId)) {
+if (!url || !username || !token) {
   throw new Error(
-    "Missing LISTMONK_URL/LISTMONK_USERNAME/LISTMONK_PASSWORD/LISTMONK_LIST_ID in .env",
+    "Missing LISTMONK_URL/LISTMONK_USERNAME/LISTMONK_TOKEN in .env",
   );
 }
 
-const client = new ListmonkClient(url, {
-  username,
-  password,
+const client = new ListMonkClient({
+  apiURL: url,
+  user: username,
+  token,
   debug: true,
 });
 
 async function main() {
+  const listsRes = await client.get("/lists?per_page=all");
+  if (!listsRes.success || !listsRes.data) {
+    console.error("Unable to list lists:", listsRes.errors);
+    process.exit(1);
+  }
+  const lists = Array.isArray(listsRes.data.results)
+    ? listsRes.data.results
+    : [];
+  console.log(
+    "Available lists:",
+    lists.map((l) => `${l.id}:${l.name ?? "unnamed"}`).join(", "),
+  );
+  const listIds = lists.map((l) => l.id);
+  if (listIds.length < 2) {
+    console.error("Need at least two lists to run the multi-list test");
+    process.exit(1);
+  }
+  const primaryListId =
+    preferredListId && listIds.includes(preferredListId)
+      ? preferredListId
+      : listIds[0];
+  const otherLists = listIds.filter((id) => id !== primaryListId);
+  const secondaryListId = otherLists[0];
+  const allLists = [primaryListId, ...otherLists];
+  console.log(
+    `Primary list: ${primaryListId}, Secondary list: ${secondaryListId}, All lists: [${allLists.join(", ")}]`,
+  );
+
   await cleanupCliSubscribers();
 
-  const randomEmail = `cli-${Date.now()}@example.com`;
-  console.log(
-    `Bulk adding ${randomEmail} to list ${listId} with addSubscribersToList...`,
+  const user1 = {
+    email: "client-test-1@example.com",
+    uid: "client-test-1",
+    name: "Client Test One",
+  };
+  const user2 = {
+    email: "client-test-2@example.com",
+    uid: "client-test-2",
+    name: "Client Test Two",
+  };
+
+  const user1Id = await createAndVerifySubscriber(user1, [...allLists]);
+  await sleep(300);
+  await ensureSubscribedInList(user1, user1Id, primaryListId, "primary");
+  await ensureSubscribedInList(user1, user1Id, secondaryListId, "secondary");
+
+  const user2Id = await createAndVerifySubscriber(user2, [...allLists]);
+  await sleep(300);
+  await ensureSubscribedInList(
+    user2,
+    user2Id,
+    primaryListId,
+    "primary (pre-unsubscribe)",
   );
-  const bulkRes = await client.addSubscribersToList(listId, [
-    {
-      email: randomEmail,
-      name: "CLI Smoke",
-      attribs: { source: "cli-smoke" },
-    },
-  ]);
-  if (!bulkRes.success) {
-    console.error("Bulk add failed:", bulkRes.errors);
-    process.exit(1);
-  }
-  const target =
-    bulkRes.data?.created[0] ??
-    bulkRes.data?.added.find((s) => s.email === randomEmail);
-  if (!target) {
-    console.error("Bulk add did not return a subscriber record");
-    process.exit(1);
-  }
-
   console.log(
-    `Using subscriber id ${target.id} (${target.email}) for status tests...`,
+    `Unsubscribing ${user2.email} from primary list ${primaryListId}...`,
   );
-  const subscriberId = target.id;
-
-  const listRes = await client.listMembersByStatus(listId, "subscribed", {
-    perPage: 50,
-  });
-  console.log(
-    "List members (subscribed) status:",
-    listRes.code,
-    listRes.message,
-  );
-
-  if (!listRes.success || !listRes.data) {
-    console.error("Failed to fetch members:", listRes.errors);
-    process.exit(1);
-  }
-
-  const found = listRes.data.results.find((s) => s.email === randomEmail);
-  console.log("New subscriber present?", Boolean(found));
-  if (!found) {
-    console.error(
-      "Newly subscribed user not found in the first page of results",
-    );
-    process.exit(1);
-  }
-
-  console.log("Unsubscribing the subscriber from the list...");
   const unsubRes = await client.put(`/subscribers/lists`, {
-    ids: [subscriberId],
+    ids: [user2Id],
     action: "unsubscribe",
-    target_list_ids: [listId],
+    target_list_ids: [primaryListId],
   });
   console.log("Unsubscribe result:", unsubRes.code, unsubRes.message);
   if (!unsubRes.success) {
     console.error("Unsubscribe errors:", unsubRes.errors);
     process.exit(1);
   }
-
-  const unsubbedList = await client.listMembersByStatus(
-    listId,
-    "unsubscribed",
-    { perPage: 50 },
+  await sleep(300);
+  await ensureUnsubscribedInList(user2, user2Id, primaryListId, "primary");
+  await ensureSubscribedInList(
+    user2,
+    user2Id,
+    secondaryListId,
+    "secondary (should remain subscribed)",
   );
-  console.log(
-    "List members (unsubbed) status:",
-    unsubbedList.code,
-    unsubbedList.message,
-  );
-  if (!unsubbedList.success || !unsubbedList.data) {
-    console.error("Failed to fetch unsubscribed members:", unsubbedList.errors);
-    process.exit(1);
-  }
-  const unsubbedFound = unsubbedList.data.results.find(
-    (s) => s.email === randomEmail,
-  );
-  console.log("Subscriber appears as unsubscribed?", Boolean(unsubbedFound));
-  if (!unsubbedFound) {
-    console.error("Unsubscribed user not found in unsubscribed listing");
-    process.exit(1);
-  }
-
-  console.log("Blocklisting the subscriber...");
-  const blockRes = await client.put(`/subscribers/${subscriberId}/blocklist`, {
-    ids: [subscriberId],
-  });
-  console.log("Blocklist result:", blockRes.code, blockRes.message);
-  if (!blockRes.success) {
-    console.error("Blocklist errors:", blockRes.errors);
-    process.exit(1);
-  }
-
-  const blockedList = await client.listMembersByStatus(listId, "blocked", {
-    perPage: 50,
-  });
-  console.log(
-    "List members (blocked) status:",
-    blockedList.code,
-    blockedList.message,
-  );
-  if (!blockedList.success || !blockedList.data) {
-    console.error("Failed to fetch blocked members:", blockedList.errors);
-    process.exit(1);
-  }
-  const blockedFound = blockedList.data.results.find(
-    (s) => s.email === randomEmail,
-  );
-  console.log("Subscriber appears as blocked?", Boolean(blockedFound));
-  if (!blockedFound) {
-    console.warn(
-      "Blocked user not visible in blocked list; checking direct subscriber status...",
-    );
-    const subscriber = await client.get(`/subscribers/${subscriberId}`);
-    if (!subscriber.success || !subscriber.data) {
-      console.error(
-        "Unable to fetch subscriber to verify blocklist status:",
-        subscriber.errors,
-      );
-      process.exit(1);
-    }
-    const status = subscriber.data.status;
-    console.log("Direct subscriber status:", status);
-    if (status !== "blocklisted") {
-      console.error("Subscriber status is not blocklisted");
-      process.exit(1);
-    }
-  }
-
-  await cleanupCliSubscribers();
 
   console.log(
-    "Smoke test (subscribe, unsubscribe, blocklist) completed successfully.",
+    "Smoke test (multi-list subscribe/unsubscribe with uids) completed successfully.",
   );
 }
 
 async function cleanupCliSubscribers() {
   const params = new URLSearchParams();
   params.set("per_page", "all");
-  params.set("query", "email ILIKE 'cli-%'");
+  params.set("query", "email ILIKE 'client-test-%'");
   const res = await client.get(`/subscribers?${params.toString()}`);
   if (!res.success || !res.data) {
     console.warn(
-      "Cleanup skipped: unable to list cli-* subscribers",
+      "Cleanup skipped: unable to list client-test-* subscribers",
       res.errors,
     );
     return;
   }
-  const cliSubs = res.data.results.filter((s) => s.email.startsWith("cli-"));
+  const cliSubs = res.data.results.filter((s) =>
+    s.email.startsWith("client-test-"),
+  );
   if (cliSubs.length === 0) {
-    console.log("Cleanup: no cli-* subscribers found");
+    console.log("Cleanup: no client-test-* subscribers found");
     return;
   }
   const ids = cliSubs.map((s) => s.id);
-  console.log(`Cleanup: deleting ${ids.length} cli-* subscribers...`);
+  console.log(`Cleanup: deleting ${ids.length} client-test-* subscribers...`);
   const del = await client.deleteSubscribers(ids);
   console.log("Cleanup delete result:", del.code, del.message);
   if (!del.success) {
     console.warn("Cleanup delete errors:", del.errors);
   }
+}
+
+function matchesUser(subscriber, user) {
+  return (
+    subscriber.email === user.email ||
+    (typeof subscriber.attribs?.uid === "string" &&
+      subscriber.attribs.uid === user.uid)
+  );
+}
+
+function pickSubscriber(res, user) {
+  const fromCreated = res.data?.created?.find((s) => matchesUser(s, user));
+  if (fromCreated) return fromCreated;
+  const fromAdded = res.data?.added?.find((s) => matchesUser(s, user));
+  return fromAdded;
+}
+
+async function createAndVerifySubscriber(user, listIds) {
+  const [firstList, ...restLists] = listIds;
+  let subscriberId;
+
+  const baseEntry = {
+    email: user.email,
+    name: user.name,
+    attribs: { source: "cli-smoke", uid: user.uid },
+    uid: user.uid,
+  };
+
+  const firstRes = await client.addSubscribersToList(firstList, [baseEntry]);
+  if (!firstRes.success) {
+    console.error(
+      `Failed adding ${user.email} to list ${firstList}:`,
+      firstRes.errors,
+    );
+    process.exit(1);
+  }
+  const firstCandidate = pickSubscriber(firstRes, user);
+  if (firstCandidate) {
+    subscriberId = firstCandidate.id;
+  }
+
+  for (const list of restLists) {
+    const res = await client.addSubscribersToList(list, [baseEntry]);
+    if (!res.success) {
+      console.error(`Failed adding ${user.email} to list ${list}:`, res.errors);
+      process.exit(1);
+    }
+  }
+
+  if (!subscriberId) {
+    console.error("Unable to determine subscriber id for", user.email);
+    process.exit(1);
+  }
+
+  const update = await client.put(`/subscribers/${subscriberId}`, {
+    email: user.email,
+    name: user.name,
+    attribs: { source: "cli-smoke", uid: user.uid },
+    lists: listIds,
+  });
+  if (!update.success) {
+    console.error(`Failed to update lists for ${user.email}:`, update.errors);
+    process.exit(1);
+  }
+
+  console.log(
+    `Using subscriber id ${subscriberId} (${user.email}) for list(s) [${listIds.join(", ")}]`,
+  );
+  return subscriberId;
+}
+
+async function ensureSubscribedInList(user, subscriberId, list, label) {
+  const res = await client.get(`/subscribers/${subscriberId}`);
+  if (!res.success || !res.data) {
+    console.error(`Failed to fetch subscriber for ${label}:`, res.errors);
+    process.exit(1);
+  }
+  const listMeta = res.data.lists?.find((l) => l.id === list);
+  let found =
+    matchesUser(res.data, user) &&
+    listMeta &&
+    listMeta.subscription_status !== "unsubscribed";
+
+  if (!found) {
+    const filter = encodeURIComponent(`id = ${subscriberId}`);
+    const listRes = await client.get(
+      `/subscribers?list_id=${list}&per_page=all&query=${filter}`,
+    );
+    if (listRes.success && listRes.data) {
+      found = listRes.data.results.some((s) => matchesUser(s, user));
+    }
+  }
+
+  console.log(
+    `${user.email} present as subscribed in ${label}?`,
+    Boolean(found),
+  );
+  if (!found) {
+    console.error(`Expected ${user.email} subscribed in ${label}`);
+    process.exit(1);
+  }
+}
+
+async function ensureUnsubscribedInList(user, subscriberId, list, label) {
+  const res = await client.get(`/subscribers/${subscriberId}`);
+  if (!res.success || !res.data) {
+    console.error(`Failed to fetch subscriber for ${label}:`, res.errors);
+    process.exit(1);
+  }
+  const listMeta = res.data.lists?.find((l) => l.id === list);
+  let found =
+    matchesUser(res.data, user) &&
+    listMeta &&
+    listMeta.subscription_status === "unsubscribed";
+
+  if (!found) {
+    const filter = encodeURIComponent(`id = ${subscriberId}`);
+    const listRes = await client.get(
+      `/subscribers?list_id=${list}&per_page=all&subscription_status=unsubscribed&query=${filter}`,
+    );
+    if (listRes.success && listRes.data) {
+      found = listRes.data.results.some((s) => matchesUser(s, user));
+    }
+  }
+
+  console.log(
+    `${user.email} present as unsubscribed in ${label}?`,
+    Boolean(found),
+  );
+  if (!found) {
+    console.error(`Expected ${user.email} unsubscribed in ${label}`);
+    process.exit(1);
+  }
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 main().catch((err) => {

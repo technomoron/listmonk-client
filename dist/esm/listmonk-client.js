@@ -1,28 +1,25 @@
 /**
- * Minimal Listmonk API client with Basic auth and helper methods.
- * Borrowed the ApiResponse wrapper pattern from api-client-base, but removed tokens/retries.
+ * Minimal Listmonk API client with Basic/Bearer auth and helper methods.
+ * Borrowed the response wrapper pattern from api-client-base, but removed tokens/retries.
  */
 import { Buffer } from "node:buffer";
-export class ApiResponse {
+export class LMCResponse {
     constructor(response = {}) {
         this.success = false;
         this.code = 500;
         this.message = "Unknown error";
         this.data = null;
-        this.errors = {};
         this.success = response.success ?? false;
         this.code = response.code ?? 500;
         this.message = response.message ?? "Unknown error";
         this.data = response.data ?? null;
-        this.errors = response.errors ?? {};
     }
     static ok(data, overrides = {}) {
-        return new ApiResponse({
+        return new LMCResponse({
             success: true,
             code: overrides.code ?? 200,
             message: overrides.message ?? "OK",
-            data,
-            errors: overrides.errors ?? {},
+            data: overrides.data ?? data,
         });
     }
     static error(messageOrError, overrides = {}) {
@@ -31,30 +28,36 @@ export class ApiResponse {
             : typeof messageOrError === "string"
                 ? messageOrError
                 : "Error";
-        return new ApiResponse({
+        return new LMCResponse({
             success: false,
             code: overrides.code ?? 500,
-            message: message || overrides.message || "Error",
-            data: null,
-            errors: overrides.errors ?? {},
+            message: overrides.message ?? (message || "Error"),
+            data: overrides.data ?? null,
         });
     }
     isSuccess() {
         return this.success && this.data !== null;
     }
 }
-export default class ListmonkClient {
-    constructor(apiUrl, config = {}) {
-        this.apiUrl = apiUrl.endsWith("/") ? apiUrl.slice(0, -1) : apiUrl;
-        this.timeoutMs = config.timeoutMs ?? 15000;
+export default class ListMonkClient {
+    constructor(config) {
+        if (!config?.apiURL) {
+            throw new Error("apiURL is required");
+        }
+        if (!config?.token) {
+            throw new Error("token is required");
+        }
+        if (!config.user) {
+            throw new Error("user is required for basic auth");
+        }
+        const normalizedUrl = config.apiURL.endsWith("/")
+            ? config.apiURL.slice(0, -1)
+            : config.apiURL;
+        this.apiUrl = normalizedUrl;
+        this.timeoutMs = config.timeoutMS ?? 15000;
         this.debug = config.debug ?? false;
-        if (config.username && config.password) {
-            const encoded = Buffer.from(`${config.username}:${config.password}`).toString("base64");
-            this.authHeader = `Basic ${encoded}`;
-        }
-        else if (config.apiKey) {
-            this.authHeader = `Bearer ${config.apiKey}`;
-        }
+        this.listPageSize = config.listPageSize ?? 100;
+        this.authHeader = `Basic ${Buffer.from(`${config.user}:${config.token}`).toString("base64")}`;
     }
     buildHeaders(initHeaders) {
         const headers = new Headers(initHeaders);
@@ -87,9 +90,9 @@ export default class ListmonkClient {
         }
         catch (err) {
             if (err.name === "AbortError") {
-                throw ApiResponse.error("Request timed out", { code: 504 });
+                throw LMCResponse.error("Request timed out", { code: 504 });
             }
-            throw ApiResponse.error(err, { code: 500 });
+            throw LMCResponse.error(err, { code: 500 });
         }
         finally {
             clearTimeout(id);
@@ -101,9 +104,9 @@ export default class ListmonkClient {
         }
         catch (err) {
             const parseMessage = err instanceof Error ? err.message : "Failed to parse JSON response";
-            throw ApiResponse.error("Failed to parse JSON response", {
+            throw LMCResponse.error("Failed to parse JSON response", {
                 code: res.status,
-                errors: { parse: parseMessage },
+                message: parseMessage,
             });
         }
     }
@@ -115,7 +118,7 @@ export default class ListmonkClient {
                 init.body = JSON.stringify(body);
             }
             catch (err) {
-                return ApiResponse.error(err);
+                return LMCResponse.error(err);
             }
         }
         if (this.debug) {
@@ -127,22 +130,25 @@ export default class ListmonkClient {
         try {
             const res = await this.safeFetch(url, init);
             const payload = await this.parseJson(res);
+            const data = payload.data !== undefined
+                ? payload.data
+                : (payload ?? null);
+            const message = payload.message ?? res.statusText;
             if (res.ok) {
-                return ApiResponse.ok(payload.data, {
+                return LMCResponse.ok(data, {
                     code: res.status,
-                    message: payload.message ?? res.statusText,
-                    errors: payload.errors ?? {},
+                    message,
                 });
             }
-            return ApiResponse.error(payload.message ?? res.statusText, {
+            return LMCResponse.error(message, {
                 code: res.status,
-                errors: payload.errors ?? {},
+                data,
             });
         }
         catch (err) {
-            if (err instanceof ApiResponse)
+            if (err instanceof LMCResponse)
                 return err;
-            return ApiResponse.error(err);
+            return LMCResponse.error(err);
         }
     }
     async get(command) {
@@ -162,7 +168,7 @@ export default class ListmonkClient {
     }
     async deleteSubscribers(ids) {
         if (ids.length === 0) {
-            return ApiResponse.error("No subscriber ids provided", { code: 400 });
+            return LMCResponse.error("No subscriber ids provided", { code: 400 });
         }
         const params = new URLSearchParams();
         ids.forEach((id) => params.append("id", String(id)));
@@ -188,9 +194,8 @@ export default class ListmonkClient {
         if (pagination.page !== undefined) {
             params.set("page", String(pagination.page));
         }
-        if (pagination.perPage !== undefined) {
-            params.set("per_page", String(pagination.perPage));
-        }
+        const perPage = pagination.perPage ?? this.listPageSize;
+        params.set("per_page", String(perPage));
         const translated = this.translateStatus(status);
         if (translated.subscriptionStatus) {
             params.set("subscription_status", translated.subscriptionStatus);
@@ -202,66 +207,153 @@ export default class ListmonkClient {
         const path = queryString ? `/subscribers?${queryString}` : "/subscribers";
         return this.get(path);
     }
-    async addSubscribersToList(listId, entries) {
+    async addSubscribersToList(listId, entries, options = {}) {
         if (entries.length === 0) {
-            return ApiResponse.ok({
+            return LMCResponse.ok({
                 created: [],
                 added: [],
                 skippedBlocked: [],
                 skippedUnsubscribed: [],
+                memberships: [],
             }, { message: "No entries to process" });
         }
-        const deduped = new Map(entries.map((e) => [e.email.toLowerCase(), e]));
-        const emails = Array.from(deduped.keys());
-        const existingSubs = new Map();
+        const normalized = entries.map((entry) => {
+            const derivedUid = entry.uid ??
+                (typeof entry.attribs?.uid === "string"
+                    ? String(entry.attribs.uid)
+                    : undefined);
+            const attribs = { ...(entry.attribs ?? {}) };
+            if (derivedUid)
+                attribs.uid = derivedUid;
+            return { ...entry, uid: derivedUid, attribs };
+        });
+        const deduped = new Map();
+        normalized.forEach((entry) => {
+            const key = entry.uid
+                ? `uid:${entry.uid}`
+                : `email:${entry.email.toLowerCase()}`;
+            deduped.set(key, entry);
+        });
+        const uids = new Set();
+        const emails = new Set();
+        deduped.forEach((entry) => {
+            if (entry.uid)
+                uids.add(entry.uid);
+            emails.add(entry.email.toLowerCase());
+        });
+        const existingByUid = new Map();
+        const existingByEmail = new Map();
         const lookupChunkSize = 2500;
-        for (let i = 0; i < emails.length; i += lookupChunkSize) {
-            const chunk = emails.slice(i, i + lookupChunkSize);
-            const inList = chunk.map((e) => `'${e.replace(/'/g, "''")}'`).join(",");
-            const query = encodeURIComponent(`email IN (${inList})`);
-            const perPage = Math.max(chunk.length, 50);
-            const res = await this.get(`/subscribers?per_page=${perPage}&query=${query}`);
-            if (res.success && res.data) {
-                res.data.results.forEach((s) => {
-                    existingSubs.set(s.email.toLowerCase(), s);
-                });
+        const escapeValue = (value) => value.replace(/'/g, "''");
+        const fetchSubscribers = async (values, buildQuery) => {
+            for (let i = 0; i < values.length; i += lookupChunkSize) {
+                const chunk = values.slice(i, i + lookupChunkSize);
+                const query = buildQuery(chunk);
+                const perPage = Math.max(chunk.length, 50);
+                const res = await this.get(`/subscribers?per_page=${perPage}&query=${query}`);
+                if (res.success && res.data) {
+                    res.data.results.forEach((s) => {
+                        const emailKey = s.email.toLowerCase();
+                        existingByEmail.set(emailKey, s);
+                        const subUid = typeof s.attribs?.uid === "string" ? String(s.attribs.uid) : null;
+                        if (subUid) {
+                            existingByUid.set(subUid, s);
+                        }
+                    });
+                }
+                else if (this.debug) {
+                    console.warn("Lookup failed for chunk", res.code, res.message);
+                }
             }
-            else if (this.debug) {
-                console.warn("Lookup failed for chunk", res.code, res.message);
-            }
+        };
+        if (uids.size > 0) {
+            await fetchSubscribers(Array.from(uids), (chunk) => {
+                const inList = chunk.map((u) => `'${escapeValue(u)}'`).join(",");
+                return encodeURIComponent(`attribs->>'uid' IN (${inList})`);
+            });
+        }
+        if (emails.size > 0) {
+            await fetchSubscribers(Array.from(emails), (chunk) => {
+                const inList = chunk.map((e) => `'${escapeValue(e)}'`).join(",");
+                return encodeURIComponent(`email IN (${inList})`);
+            });
         }
         const created = [];
         const added = [];
         const skippedBlocked = [];
         const skippedUnsubscribed = [];
         const addIds = [];
-        for (const [email, entry] of deduped.entries()) {
-            const existing = existingSubs.get(email);
+        const memberships = [];
+        const attachToList = options.attachToList ?? true;
+        for (const entry of deduped.values()) {
+            const emailKey = entry.email.toLowerCase();
+            const entryAttribs = { ...(entry.attribs ?? {}) };
+            if (entry.uid)
+                entryAttribs.uid = entry.uid;
+            let existing = entry.uid !== undefined
+                ? (existingByUid.get(entry.uid) ?? existingByEmail.get(emailKey))
+                : existingByEmail.get(emailKey);
             if (!existing) {
-                const createRes = await this.subscribe(listId, entry.email, entry.name ?? "", entry.attribs ?? {}, { preconfirm: true, status: "enabled" });
+                const createRes = attachToList
+                    ? await this.subscribe(listId, entry.email, entry.name ?? "", entryAttribs, { preconfirm: true, status: "enabled" })
+                    : await this.post("/subscribers", {
+                        email: entry.email,
+                        name: entry.name ?? "",
+                        attribs: entryAttribs,
+                        lists: [],
+                        preconfirm_subscriptions: true,
+                        status: "enabled",
+                    });
                 if (createRes.success && createRes.data) {
                     created.push(createRes.data);
+                    memberships.push({
+                        email: entry.email,
+                        lists: createRes.data.lists,
+                    });
                 }
                 continue;
             }
+            if (entry.uid && existing.email.toLowerCase() !== emailKey) {
+                const updateRes = await this.put(`/subscribers/${existing.id}`, {
+                    email: entry.email,
+                    name: entry.name ?? existing.name,
+                    attribs: entryAttribs,
+                });
+                if (!updateRes.success || !updateRes.data) {
+                    return LMCResponse.error(updateRes.message || "Failed to update subscriber email", { code: updateRes.code });
+                }
+                existing = updateRes.data;
+                existingByEmail.set(emailKey, existing);
+                if (entry.uid) {
+                    existingByUid.set(entry.uid, existing);
+                }
+            }
             if (existing.status === "blocklisted") {
                 skippedBlocked.push(existing.email);
+                memberships.push({ email: existing.email, lists: existing.lists });
                 continue;
             }
             const listInfo = existing.lists?.find((l) => l.id === listId);
             if (listInfo?.subscription_status === "unsubscribed") {
                 skippedUnsubscribed.push(existing.email);
+                memberships.push({ email: existing.email, lists: existing.lists });
                 continue;
             }
             if (listInfo && listInfo.subscription_status !== "unsubscribed") {
                 // Already on the list in a good state
-                added.push(existing);
+                if (attachToList) {
+                    added.push(existing);
+                }
+                memberships.push({ email: existing.email, lists: existing.lists });
                 continue;
             }
-            addIds.push(existing.id);
-            added.push(existing);
+            memberships.push({ email: existing.email, lists: existing.lists });
+            if (attachToList) {
+                addIds.push(existing.id);
+                added.push(existing);
+            }
         }
-        if (addIds.length > 0) {
+        if (attachToList && addIds.length > 0) {
             const addChunkSize = 2500;
             for (let i = 0; i < addIds.length; i += addChunkSize) {
                 const chunk = addIds.slice(i, i + addChunkSize);
@@ -271,19 +363,58 @@ export default class ListmonkClient {
                 });
             }
         }
-        return ApiResponse.ok({
+        return LMCResponse.ok({
             created,
             added,
             skippedBlocked,
             skippedUnsubscribed,
+            memberships,
         });
+    }
+    async changeEmail(currentEmail, newEmail) {
+        const trimmedNew = newEmail.trim();
+        const trimmedCurrent = currentEmail.trim();
+        if (!trimmedCurrent) {
+            return LMCResponse.error("Current email is required", { code: 400 });
+        }
+        if (!trimmedNew) {
+            return LMCResponse.error("New email is required", { code: 400 });
+        }
+        const subscriber = await this.findSubscriberByEmail(trimmedCurrent);
+        if (!subscriber.success || !subscriber.data) {
+            return subscriber;
+        }
+        if (subscriber.data.email.toLowerCase() === trimmedNew.toLowerCase()) {
+            return LMCResponse.ok(subscriber.data, {
+                message: "Email already set to the provided value",
+            });
+        }
+        const updateRes = await this.put(`/subscribers/${subscriber.data.id}`, {
+            email: trimmedNew,
+            name: subscriber.data.name,
+            attribs: subscriber.data.attribs,
+        });
+        if (!updateRes.success)
+            return updateRes;
+        return updateRes;
+    }
+    async findSubscriberByEmail(email) {
+        const escape = (value) => value.replace(/'/g, "''");
+        const query = encodeURIComponent(`email = '${escape(email)}'`);
+        const res = await this.get(`/subscribers?per_page=1&query=${query}`);
+        if (res.success && res.data && res.data.results.length > 0) {
+            return LMCResponse.ok(res.data.results[0], {
+                code: res.code,
+                message: res.message,
+            });
+        }
+        return LMCResponse.error("Subscriber not found", { code: 404 });
     }
     translateStatus(status) {
         switch (status) {
             case "subscribed":
                 return { subscriptionStatus: "confirmed" };
             case "unsubscribed":
-            case "unsubbed":
                 return { subscriptionStatus: "unsubscribed" };
             case "blocked":
                 return { query: "subscribers.status = 'blocklisted'" };
