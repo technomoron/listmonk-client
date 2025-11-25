@@ -123,9 +123,7 @@ Use `response.isSuccess()` as a type guard, or inspect `success`/`data`.
 
 ### `new ListMonkClient(config)`
 
-- `config: LMCConfig`
-  `{ apiURL: string;    token: string;    user?: string;    timeoutMS?: number;    debug?: boolean;    listPageSize?: number;  }`
-  - Basic auth only (user + token).
+- `config: LMCConfig` (see Interfaces)
 
 ### `client.subscribe(listId, { email, name?, attribs? }, options?)`
 
