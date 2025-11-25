@@ -129,7 +129,7 @@ Use `response.isSuccess()` as a type guard, or inspect `success`/`data`.
   - Basic auth only (user + token).
 
 
-### `client.subscribe(listId, email, name?, attribs?, options?)`
+### `client.subscribe({ listId, email, name?, attribs? }, options?)`
 
 Create a subscriber (if it doesn't exist) and subscribe it to a list.
 

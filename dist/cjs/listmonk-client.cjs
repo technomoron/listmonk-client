@@ -178,12 +178,12 @@ class ListMonkClient {
         ids.forEach((id) => params.append("id", String(id)));
         return this.delete(`/subscribers?${params.toString()}`);
     }
-    async subscribe(listId, email, name = "", attribs = {}, options = {}) {
-        const lists = [listId];
+    async subscribe(input, options = {}) {
+        const lists = [input.listId];
         const body = {
-            email,
-            name,
-            attribs,
+            email: input.email,
+            name: input.name ?? "",
+            attribs: input.attribs ?? {},
             lists,
             preconfirm_subscriptions: options.preconfirm ?? true,
             ...(options.status ? { status: options.status } : {}),
@@ -297,7 +297,12 @@ class ListMonkClient {
                 : existingByEmail.get(emailKey);
             if (!existing) {
                 const createRes = attachToList
-                    ? await this.subscribe(listId, entry.email, entry.name ?? "", entryAttribs, { preconfirm: true, status: "enabled" })
+                    ? await this.subscribe({
+                        listId,
+                        email: entry.email,
+                        name: entry.name ?? "",
+                        attribs: entryAttribs,
+                    }, { preconfirm: true, status: "enabled" })
                     : await this.post("/subscribers", {
                         email: entry.email,
                         name: entry.name ?? "",
