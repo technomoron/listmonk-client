@@ -179,14 +179,12 @@ class ListMonkClient {
         return this.delete(`/subscribers?${params.toString()}`);
     }
     async subscribe(listId, email, name = "", attribs = {}, options = {}) {
-        const lists = options.listUuid ? [] : [listId];
-        const listUuids = options.listUuid ? [options.listUuid] : [];
+        const lists = [listId];
         const body = {
             email,
             name,
             attribs,
             lists,
-            list_uuids: listUuids,
             preconfirm_subscriptions: options.preconfirm ?? true,
             ...(options.status ? { status: options.status } : {}),
         };

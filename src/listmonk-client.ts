@@ -48,8 +48,7 @@ import { Buffer } from "node:buffer";
  *   - `memberships`: membership snapshots for each processed email.
  * - `LMCSubscribeOptions`: tune subscription behavior.
  *   - `preconfirm`: preconfirm subscriptions (default true).
- *   - `status`: override subscriber status (e.g. "enabled").
- *   - `listUuid`: subscribe by list UUID instead of numeric id.
+ *   - `status`: override subscriber status (`"enabled" | "disabled" | "blocklisted" | "unconfirmed" | "bounced"`).
  * - `LMCResponseData<T>`: response envelope returned by all client methods.
  *   - `success`: boolean flag indicating the call succeeded.
  *   - `code`: HTTP status code from the API.
@@ -114,10 +113,16 @@ export interface LMCBulkAddResult {
   memberships?: { email: string; lists?: LMCSubscription[] }[];
 }
 
+export type LMCSubscriberStatus =
+  | "enabled"
+  | "disabled"
+  | "blocklisted"
+  | "unconfirmed"
+  | "bounced";
+
 export interface LMCSubscribeOptions {
   preconfirm?: boolean;
-  status?: string;
-  listUuid?: string;
+  status?: LMCSubscriberStatus;
 }
 
 export interface LMCConfig {
@@ -373,15 +378,13 @@ export default class ListMonkClient {
     attribs: LMCSubscriberAttribs = {},
     options: LMCSubscribeOptions = {},
   ): Promise<LMCResponse<LMCSubscriber>> {
-    const lists: number[] = options.listUuid ? [] : [listId];
-    const listUuids: string[] = options.listUuid ? [options.listUuid] : [];
+    const lists: number[] = [listId];
 
     const body = {
       email,
       name,
       attribs,
       lists,
-      list_uuids: listUuids,
       preconfirm_subscriptions: options.preconfirm ?? true,
       ...(options.status ? { status: options.status } : {}),
     };

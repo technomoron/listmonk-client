@@ -42,8 +42,7 @@
  *   - `memberships`: membership snapshots for each processed email.
  * - `LMCSubscribeOptions`: tune subscription behavior.
  *   - `preconfirm`: preconfirm subscriptions (default true).
- *   - `status`: override subscriber status (e.g. "enabled").
- *   - `listUuid`: subscribe by list UUID instead of numeric id.
+ *   - `status`: override subscriber status (`"enabled" | "disabled" | "blocklisted" | "unconfirmed" | "bounced"`).
  * - `LMCResponseData<T>`: response envelope returned by all client methods.
  *   - `success`: boolean flag indicating the call succeeded.
  *   - `code`: HTTP status code from the API.
@@ -104,10 +103,10 @@ export interface LMCBulkAddResult {
         lists?: LMCSubscription[];
     }[];
 }
+export type LMCSubscriberStatus = "enabled" | "disabled" | "blocklisted" | "unconfirmed" | "bounced";
 export interface LMCSubscribeOptions {
     preconfirm?: boolean;
-    status?: string;
-    listUuid?: string;
+    status?: LMCSubscriberStatus;
 }
 export interface LMCConfig {
     apiURL: string;

@@ -46,8 +46,7 @@ add, change email).
 - `LMCListMemberStatus`: `"subscribed" | "unsubscribed" | "blocked"`.
 - `LMCSubscribeOptions`
   - `preconfirm`: preconfirm subscriptions (default `true`).
-  - `status`: override subscriber status (e.g. `"enabled"`).
-  - `listUuid`: target a list by UUID instead of id.
+  - `status`: override subscriber status (`"enabled" | "disabled" | "blocklisted" | "unconfirmed" | "bounced"`).
 - `LMCBulkSubscriberInput`
   - `email`, `name`, `uid`, `attribs` (uid is mirrored into attribs when present).
 - `LMCBulkAddResult`
@@ -122,9 +121,9 @@ Generic DELETE helper. Returns `LMCResponse<T>`.
 
 Create a subscriber (if it doesn't exist) and subscribe it to a list.
 
-- `listId`: numeric list id (ignored when `options.listUuid` is provided).
+- `listId`: numeric list id.
 - `attribs`: arbitrary JSON-safe map to store alongside the subscriber.
-- `options`: `LMCSubscribeOptions` (`preconfirm`, `status`, `listUuid`).
+- `options`: `LMCSubscribeOptions` (`preconfirm`, `status`).
 - Returns `LMCResponse<LMCSubscriber>` (includes `id`, `uuid`, `lists`, `attribs`, etc.).
 
 ### `client.listMembersByStatus(listId, status, pagination?)`
