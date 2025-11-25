@@ -13,6 +13,7 @@ export type {
   LMCResponseData,
   LMCConfig,
   LMCBulkSubscription,
+  LMCSubscriptionSnapshot,
   LMCBulkAddResult,
 } from "./listmonk-client.js";
 export { LMCResponse } from "./listmonk-client.js";

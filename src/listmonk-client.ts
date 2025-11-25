@@ -105,12 +105,17 @@ export interface LMCBulkSubscription {
   attribs?: LMCSubscriberAttribs;
 }
 
+export interface LMCSubscriptionSnapshot {
+  email: string;
+  lists?: LMCSubscription[];
+}
+
 export interface LMCBulkAddResult {
   created: LMCSubscriber[];
   added: LMCSubscriber[];
   skippedBlocked: string[];
   skippedUnsubscribed: string[];
-  memberships?: { email: string; lists?: LMCSubscription[] }[];
+  memberships?: LMCSubscriptionSnapshot[];
 }
 
 export type LMCSubscriberStatus =
@@ -516,7 +521,7 @@ export default class ListMonkClient {
     const skippedBlocked: string[] = [];
     const skippedUnsubscribed: string[] = [];
     const addIds: number[] = [];
-    const memberships: { email: string; lists?: LMCSubscription[] }[] = [];
+    const memberships: LMCSubscriptionSnapshot[] = [];
     const attachToList = options.attachToList ?? true;
 
     for (const entry of deduped.values()) {

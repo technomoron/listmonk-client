@@ -48,7 +48,10 @@ add, change email).
 
 - `LMCSubscriberPage`
   - `results`: `LMCSubscriber[]`.
-  - `total`, `per_page`, `page`, `query`.
+  - `total`: total matching subscribers for the query.
+  - `per_page`: page size used.
+  - `page`: current page number.
+  - `query`: optional filter applied (when present).
 
 - `LMCListMemberStatus`: `"subscribed" | "unsubscribed" | "blocked"`.
 
@@ -65,7 +68,7 @@ add, change email).
 - `LMCBulkAddResult`
   - `created`, `added`: subscribers created or attached.
   - `skippedBlocked`, `skippedUnsubscribed`: emails not added due to status.
-  - `memberships`: `{ email; lists?: LMCSubscription[] }[]` snapshot.
+  - `memberships`: `LMCSubscriptionSnapshot[]` (email + current list memberships).
 
 ## Installation
 

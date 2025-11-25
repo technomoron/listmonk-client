@@ -93,15 +93,16 @@ export interface LMCBulkSubscription {
     uid?: string;
     attribs?: LMCSubscriberAttribs;
 }
+export interface LMCSubscriptionSnapshot {
+    email: string;
+    lists?: LMCSubscription[];
+}
 export interface LMCBulkAddResult {
     created: LMCSubscriber[];
     added: LMCSubscriber[];
     skippedBlocked: string[];
     skippedUnsubscribed: string[];
-    memberships?: {
-        email: string;
-        lists?: LMCSubscription[];
-    }[];
+    memberships?: LMCSubscriptionSnapshot[];
 }
 export type LMCSubscriberStatus = "enabled" | "disabled" | "blocklisted" | "unconfirmed" | "bounced";
 export interface LMCSubscribeOptions {
