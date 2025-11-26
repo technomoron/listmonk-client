@@ -1,0 +1,11 @@
+# 1.0.1
+- Improve response parsing for empty/non-JSON bodies.
+- `subscribe` now re-attaches unsubscribed members and surfaces required messages.
+- Bulk add returns per-entry errors and 207 for partial success.
+- Add Vitest unit tests and keep live test as `pnpm livetest`.
+- Fix equality query encoding to avoid double-encoding.
+- Preserve list memberships on `updateUser`; add UID guard requiring `forceUidChange` to overwrite existing uids.
+- Live test logs subscription statuses (new, already, resubscribe) and exercises update flows.
+
+# 1.0.0
+- Initial release.

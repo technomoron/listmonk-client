@@ -99,6 +99,16 @@ add, change email).
   - `skippedUnsubscribed` (string[], required): emails skipped due to
     unsubscribed status.
   - `memberships` (LMCSubscriptionSnapshot[], optional): membership snapshots.
+- `LMCBulkAddError`
+  - `email` (string, required): email that failed to process.
+  - `message` (string, required): failure message.
+  - `code` (number, optional): HTTP status or error code when available.
+- `LMCSubscribeResult`
+  - `subscriber` (LMCSubscriber | null): subscriber returned by the API.
+  - `added` (boolean): `true` when the call added the subscriber to the list.
+  - `alreadySubscribed` (boolean): `true` when the subscriber was already on the
+    list.
+  - `created` (boolean): `true` when a new subscriber record was created.
 
 ## Installation
 
@@ -180,6 +190,9 @@ Update a subscriber by id, uuid, or email.
 
 - `identifier`: `{ id?: number; uuid?: string; email?: string }` (one required)
 - `updates`: `Partial<LMCUser>`; `uid` is mirrored into `attribs.uid` when set.
+- `options?`: `{ forceUidChange?: boolean }`; when `uid` is provided and an
+  existing `attribs.uid` is present, the update is rejected unless
+  `forceUidChange` is `true`.
 - Returns `LMCResponse<LMCSubscriber>`.
 
 ### `client.subscribe(listId, { email, name?, attribs? }, options?)`
@@ -189,8 +202,10 @@ Create a subscriber (if it doesn't exist) and subscribe it to a list.
 - `listId`: numeric list id.
 - `attribs`: arbitrary JSON-safe map to store alongside the subscriber.
 - `options`: `LMCSubscribeOptions` (`preconfirm`, `status`).
-- Returns `LMCResponse<LMCSubscriber>` (includes `id`, `uuid`, `lists`,
-  `attribs`, etc.).
+- Returns `LMCResponse<LMCSubscribeResult>`; `message` is
+  `"Successfully subscribed"` when the list was updated, `"Already subscribed"`
+  when no change was needed, or `Failed to subscribe: ...` when an error occurs.
+  Existing unsubscribed members are re-attached (unless blocklisted).
 
 ### `client.listMembersByStatus(listId, status, pagination?)`
 
@@ -217,6 +232,8 @@ Bulk create/add subscribers.
   - `skippedUnsubscribed: string[]`
   - `memberships?: { email: string; lists?: LMCSubscription[] }[]` (current
     lists seen for each processed email)
+  - `errors?: { email: string; message: string; code?: number }[]` when one or
+    more entries fail (partial success returns `success: false`, `code: 207`).
 
 ### `client.deleteSubscriber(id)`
 

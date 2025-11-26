@@ -10,6 +10,11 @@ const { ListMonkClient } = require("../dist/cjs/index.cjs");
 const url = process.env.LISTMONK_URL;
 const username = process.env.LISTMONK_USERNAME;
 const token = process.env.LISTMONK_TOKEN;
+const uidGuardUser = {
+  email: "client-test-uid-guard@example.com",
+  uid: "client-test-uid-guard",
+  name: "Client Test UID Guard",
+};
 const preferredListId = process.env.LISTMONK_LIST_ID
   ? Number.parseInt(process.env.LISTMONK_LIST_ID, 10)
   : undefined;
@@ -26,6 +31,14 @@ const client = new ListMonkClient({
   token,
   debug: true,
 });
+
+async function logSubscribe(label, listId, payload) {
+  const res = await client.subscribe(listId, payload);
+  console.log(
+    `[subscribe:${label}] success=${res.success} code=${res.code} message="${res.message}" added=${res.data?.added} created=${res.data?.created} alreadySubscribed=${res.data?.alreadySubscribed}`,
+  );
+  return res;
+}
 
 async function main() {
   const listsRes = await client.get("/lists?per_page=all");
@@ -73,6 +86,17 @@ async function main() {
   await sleep(300);
   await ensureSubscribedInList(user1, user1Id, primaryListId, "primary");
   await ensureSubscribedInList(user1, user1Id, secondaryListId, "secondary");
+  await testUpdateUser(user1Id, user1, primaryListId, secondaryListId);
+  await logSubscribe("already-subscribed-user1", primaryListId, {
+    email: user1.email,
+    name: user1.name,
+  });
+  const freshUserEmail = "client-test-3@example.com";
+  await logSubscribe("new-subscriber", primaryListId, {
+    email: freshUserEmail,
+    name: "Client Test Fresh",
+    attribs: { source: "cli-smoke", uid: freshUserEmail },
+  });
 
   const user2Id = await createAndVerifySubscriber(user2, [...allLists]);
   await sleep(300);
@@ -103,6 +127,20 @@ async function main() {
     secondaryListId,
     "secondary (should remain subscribed)",
   );
+  await logSubscribe("resubscribe-user2", primaryListId, {
+    email: user2.email,
+    name: user2.name,
+    attribs: { source: "cli-smoke", uid: user2.uid },
+  });
+  await sleep(300);
+  await ensureSubscribedInList(
+    user2,
+    user2Id,
+    primaryListId,
+    "primary (after resubscribe)",
+  );
+
+  await testUidGuard(primaryListId);
 
   console.log(
     "Smoke test (multi-list subscribe/unsubscribe with uids) completed successfully.",
@@ -272,6 +310,114 @@ async function ensureUnsubscribedInList(user, subscriberId, list, label) {
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function testUpdateUser(
+  subscriberId,
+  user,
+  primaryListId,
+  secondaryListId,
+) {
+  const updatedEmail = user.email.replace("@", "+updated@");
+  const updatedName = `${user.name} Updated`;
+  const updatedAttribs = { source: "cli-smoke-updated", uid: user.uid };
+
+  console.log(`Updating subscriber ${subscriberId} to ${updatedEmail}...`);
+  const update = await client.updateUser(
+    { id: subscriberId },
+    { email: updatedEmail, name: updatedName, attribs: updatedAttribs },
+  );
+  if (!update.success || !update.data) {
+    console.error("Update (change email/attribs) failed:", update);
+    process.exit(1);
+  }
+  const fetched = await client.get(`/subscribers/${subscriberId}`);
+  if (
+    !fetched.success ||
+    !fetched.data ||
+    fetched.data.email !== updatedEmail ||
+    fetched.data.name !== updatedName ||
+    fetched.data.attribs?.uid !== user.uid
+  ) {
+    console.error("Post-update verification failed", fetched);
+    process.exit(1);
+  }
+  console.log(
+    `Update verified: email=${fetched.data.email}, name=${fetched.data.name}, attribs.uid=${fetched.data.attribs?.uid}`,
+  );
+  await ensureSubscribedInList(
+    { ...user, email: updatedEmail },
+    subscriberId,
+    primaryListId,
+    "primary (post-update)",
+  );
+  await ensureSubscribedInList(
+    { ...user, email: updatedEmail },
+    subscriberId,
+    secondaryListId,
+    "secondary (post-update)",
+  );
+
+  console.log(`Restoring subscriber ${subscriberId} to ${user.email}...`);
+  const restore = await client.updateUser(
+    { id: subscriberId },
+    {
+      email: user.email,
+      name: user.name,
+      attribs: { source: "cli-smoke", uid: user.uid },
+    },
+  );
+  if (!restore.success || !restore.data) {
+    console.error("Restore after update failed:", restore);
+    process.exit(1);
+  }
+}
+
+async function testUidGuard(listId) {
+  console.log("Testing UID guard...");
+  const sub = await client.subscribe(listId, {
+    email: uidGuardUser.email,
+    name: uidGuardUser.name,
+    attribs: { uid: uidGuardUser.uid },
+  });
+  if (!sub.success || !sub.data?.subscriber) {
+    console.error("Unable to create uid guard subscriber", sub);
+    process.exit(1);
+  }
+  const subId = sub.data.subscriber.id;
+  const failUpdate = await client.updateUser(
+    { id: subId },
+    { uid: `${uidGuardUser.uid}-new` },
+  );
+  console.log(
+    "[uid-guard] expected failure",
+    failUpdate.success,
+    failUpdate.code,
+    failUpdate.message,
+  );
+  if (failUpdate.success || failUpdate.code !== 400) {
+    console.error("UID guard did not fail as expected", failUpdate);
+    process.exit(1);
+  }
+
+  const forceUpdate = await client.updateUser(
+    { id: subId },
+    { uid: `${uidGuardUser.uid}-new`, email: uidGuardUser.email },
+    { forceUidChange: true },
+  );
+  console.log(
+    "[uid-guard] forced change",
+    forceUpdate.success,
+    forceUpdate.code,
+    forceUpdate.message,
+  );
+  if (
+    !forceUpdate.success ||
+    forceUpdate.data?.attribs?.uid !== `${uidGuardUser.uid}-new`
+  ) {
+    console.error("Force UID change failed", forceUpdate);
+    process.exit(1);
+  }
 }
 
 main().catch((err) => {

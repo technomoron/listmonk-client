@@ -8,6 +8,7 @@ export type {
   LMCSubscriberAttribs,
   LMCSubscriptionStatus,
   LMCSubscribeOptions,
+  LMCSubscribeResult,
   LMCSubscription,
   LMCListRecord,
   LMCListVisibility,
@@ -19,5 +20,6 @@ export type {
   LMCBulkSubscription,
   LMCSubscriptionSnapshot,
   LMCBulkAddResult,
+  LMCBulkAddError,
 } from "./listmonk-client.js";
 export { LMCResponse } from "./listmonk-client.js";

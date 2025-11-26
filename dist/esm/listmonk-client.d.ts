@@ -72,6 +72,18 @@ export interface LMCBulkAddResult {
     skippedBlocked: string[];
     skippedUnsubscribed: string[];
     memberships?: LMCSubscriptionSnapshot[];
+    errors?: LMCBulkAddError[];
+}
+export interface LMCBulkAddError {
+    email: string;
+    message: string;
+    code?: number;
+}
+export interface LMCSubscribeResult {
+    subscriber: LMCSubscriber | null;
+    added: boolean;
+    alreadySubscribed: boolean;
+    created: boolean;
 }
 export interface LMCUser {
     email: string;
@@ -119,7 +131,7 @@ export default class ListMonkClient {
         email: string;
         name?: string;
         attribs?: LMCSubscriberAttribs;
-    }, options?: LMCSubscribeOptions): Promise<LMCResponse<LMCSubscriber>>;
+    }, options?: LMCSubscribeOptions): Promise<LMCResponse<LMCSubscribeResult>>;
     listMembersByStatus(listId: number, status: LMCListMemberStatus, pagination?: {
         page?: number;
         perPage?: number;
@@ -132,7 +144,9 @@ export default class ListMonkClient {
         id?: number;
         uuid?: string;
         email?: string;
-    }, updates: Partial<LMCUser>): Promise<LMCResponse<LMCSubscriber>>;
+    }, updates: Partial<LMCUser>, options?: {
+        forceUidChange?: boolean;
+    }): Promise<LMCResponse<LMCSubscriber>>;
     private findSubscriber;
     private translateStatus;
     private areAttribsEqual;

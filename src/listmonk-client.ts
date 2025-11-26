@@ -91,6 +91,20 @@ export interface LMCBulkAddResult {
   skippedBlocked: string[];
   skippedUnsubscribed: string[];
   memberships?: LMCSubscriptionSnapshot[];
+  errors?: LMCBulkAddError[];
+}
+
+export interface LMCBulkAddError {
+  email: string;
+  message: string;
+  code?: number;
+}
+
+export interface LMCSubscribeResult {
+  subscriber: LMCSubscriber | null;
+  added: boolean;
+  alreadySubscribed: boolean;
+  created: boolean;
 }
 
 export interface LMCUser {
@@ -237,8 +251,24 @@ export default class ListMonkClient {
   private async parseJson<T>(
     res: Response,
   ): Promise<Partial<LMCResponseData<T>>> {
+    const contentType = res.headers.get("content-type") ?? "";
+
+    if (res.status === 204 || res.status === 205) {
+      return { data: null, message: res.statusText };
+    }
+
+    const text = await res.text();
+
+    if (!text) {
+      return { data: null, message: res.statusText };
+    }
+
+    if (!contentType.toLowerCase().includes("application/json")) {
+      return { data: null, message: text };
+    }
+
     try {
-      return (await res.json()) as Partial<LMCResponseData<T>>;
+      return JSON.parse(text) as Partial<LMCResponseData<T>>;
     } catch (err: unknown) {
       const parseMessage =
         err instanceof Error ? err.message : "Failed to parse JSON response";
@@ -382,19 +412,118 @@ export default class ListMonkClient {
       attribs?: LMCSubscriberAttribs;
     },
     options: LMCSubscribeOptions = {},
-  ): Promise<LMCResponse<LMCSubscriber>> {
+  ): Promise<LMCResponse<LMCSubscribeResult>> {
+    if (!Number.isFinite(listId)) {
+      return LMCResponse.error("Failed to subscribe: listId must be a number", {
+        code: 400,
+      });
+    }
+
+    const email = input.email?.trim();
+    if (!email) {
+      return LMCResponse.error("Failed to subscribe: email is required", {
+        code: 400,
+      });
+    }
+    const name = input.name ?? "";
+    const attribs = input.attribs ?? {};
     const lists: number[] = [listId];
 
+    const existing = await this.findSubscriber({ email });
+    if (existing.success && existing.data) {
+      const subscriber = existing.data;
+      const membership = subscriber.lists?.find((l) => l.id === listId);
+      const membershipStatus = membership?.subscription_status as
+        | string
+        | undefined;
+
+      if (subscriber.status === "blocklisted") {
+        return LMCResponse.error(
+          "Failed to subscribe: subscriber is blocklisted",
+          { code: 400 },
+        );
+      }
+
+      if (membershipStatus && membershipStatus !== "unsubscribed") {
+        return LMCResponse.ok(
+          {
+            subscriber,
+            added: false,
+            alreadySubscribed: true,
+            created: false,
+          },
+          { code: existing.code, message: "Already subscribed" },
+        );
+      }
+
+      const attachRes =
+        membershipStatus === "unsubscribed"
+          ? await this.put(`/subscribers/lists`, {
+              ids: [subscriber.id],
+              action: "add",
+              target_list_ids: [listId],
+            })
+          : await this.put(`/subscribers/lists/${listId}`, {
+              ids: [subscriber.id],
+              action: "add",
+            });
+      if (!attachRes.success) {
+        return LMCResponse.error(`Failed to subscribe: ${attachRes.message}`, {
+          code: attachRes.code,
+        });
+      }
+
+      const refreshed = await this.get<LMCSubscriber>(
+        `/subscribers/${subscriber.id}`,
+      );
+      const updatedSubscriber =
+        refreshed.success && refreshed.data ? refreshed.data : subscriber;
+
+      return LMCResponse.ok(
+        {
+          subscriber: updatedSubscriber,
+          added: true,
+          alreadySubscribed: false,
+          created: false,
+        },
+        {
+          code: refreshed.success ? refreshed.code : attachRes.code,
+          message: "Successfully subscribed",
+        },
+      );
+    }
+
+    if (!existing.success && existing.code !== 404) {
+      return LMCResponse.error(`Failed to subscribe: ${existing.message}`, {
+        code: existing.code,
+      });
+    }
+
     const body = {
-      email: input.email,
-      name: input.name ?? "",
-      attribs: input.attribs ?? {},
+      email,
+      name,
+      attribs,
       lists,
       preconfirm_subscriptions: options.preconfirm ?? true,
       ...(options.status ? { status: options.status } : {}),
     };
 
-    return this.post<LMCSubscriber>("/subscribers", body);
+    const createRes = await this.post<LMCSubscriber>("/subscribers", body);
+    if (!createRes.success || !createRes.data) {
+      return LMCResponse.error(`Failed to subscribe: ${createRes.message}`, {
+        code: createRes.code,
+      });
+    }
+
+    return LMCResponse.ok(
+      {
+        subscriber: createRes.data,
+        added: true,
+        alreadySubscribed: false,
+        created: true,
+      },
+      { code: createRes.code, message: "Successfully subscribed" },
+    );
   }
 
   async listMembersByStatus(
@@ -521,7 +650,9 @@ export default class ListMonkClient {
     const skippedBlocked: string[] = [];
     const skippedUnsubscribed: string[] = [];
     const addIds: number[] = [];
+    const resubscribeIds: number[] = [];
     const memberships: LMCSubscriptionSnapshot[] = [];
+    const errors: LMCBulkAddError[] = [];
     const attachToList = options.attachToList ?? true;
 
     for (const entry of deduped.values()) {
@@ -535,30 +666,56 @@ export default class ListMonkClient {
           : existingByEmail.get(emailKey);
 
       if (!existing) {
-        const createRes = attachToList
-          ? await this.subscribe(
-              listId,
-              {
-                email: entry.email,
-                name: entry.name ?? "",
-                attribs: entryAttribs,
-              },
-              { preconfirm: true, status: "enabled" },
-            )
-          : await this.post<LMCSubscriber>("/subscribers", {
+        if (attachToList) {
+          const createRes = await this.subscribe(
+            listId,
+            {
               email: entry.email,
               name: entry.name ?? "",
               attribs: entryAttribs,
-              lists: [],
-              preconfirm_subscriptions: true,
-              status: "enabled",
+            },
+            { preconfirm: true, status: "enabled" },
+          );
+          const subscribeData = createRes.data;
+          if (createRes.success && subscribeData?.subscriber) {
+            if (subscribeData.created) {
+              created.push(subscribeData.subscriber);
+            } else {
+              added.push(subscribeData.subscriber);
+            }
+            memberships.push({
+              email: entry.email,
+              lists: subscribeData.subscriber.lists,
             });
-        if (createRes.success && createRes.data) {
-          created.push(createRes.data);
-          memberships.push({
+          } else {
+            errors.push({
+              email: entry.email,
+              message: createRes.message,
+              code: createRes.code,
+            });
+          }
+        } else {
+          const createRes = await this.post<LMCSubscriber>("/subscribers", {
             email: entry.email,
-            lists: createRes.data.lists,
+            name: entry.name ?? "",
+            attribs: entryAttribs,
+            lists: [],
+            preconfirm_subscriptions: true,
+            status: "enabled",
           });
+          if (createRes.success && createRes.data) {
+            created.push(createRes.data);
+            memberships.push({
+              email: entry.email,
+              lists: createRes.data.lists,
+            });
+          } else {
+            errors.push({
+              email: entry.email,
+              message: createRes.message,
+              code: createRes.code,
+            });
+          }
         }
         continue;
       }
@@ -595,12 +752,7 @@ export default class ListMonkClient {
       const membershipStatus = listInfo?.subscription_status as
         | string
         | undefined;
-      if (membershipStatus === "unsubscribed") {
-        skippedUnsubscribed.push(existing.email);
-        memberships.push({ email: existing.email, lists: existing.lists });
-        continue;
-      }
-
+      const isUnsubscribed = membershipStatus === "unsubscribed";
       if (listInfo && membershipStatus !== "unsubscribed") {
         // Already on the list in a good state
         if (attachToList) {
@@ -613,8 +765,13 @@ export default class ListMonkClient {
       memberships.push({ email: existing.email, lists: existing.lists });
 
       if (attachToList) {
-        addIds.push(existing.id);
-        added.push(existing);
+        if (isUnsubscribed) {
+          resubscribeIds.push(existing.id);
+          added.push(existing);
+        } else {
+          addIds.push(existing.id);
+          added.push(existing);
+        }
       }
     }
 
@@ -629,13 +786,43 @@ export default class ListMonkClient {
       }
     }
 
-    return LMCResponse.ok({
-      created,
-      added,
-      skippedBlocked,
-      skippedUnsubscribed,
-      memberships,
-    });
+    if (attachToList && resubscribeIds.length > 0) {
+      const chunkSize = 2500;
+      for (let i = 0; i < resubscribeIds.length; i += chunkSize) {
+        const chunk = resubscribeIds.slice(i, i + chunkSize);
+        await this.put(`/subscribers/lists`, {
+          ids: chunk,
+          action: "add",
+          target_list_ids: [listId],
+        });
+      }
+    }
+
+    if (errors.length > 0) {
+      return LMCResponse.error("Failed to add some subscribers", {
+        code: errors.length === deduped.size ? 500 : 207,
+        data: {
+          created,
+          added,
+          skippedBlocked,
+          skippedUnsubscribed,
+          memberships,
+          errors,
+        },
+      });
+    }
+
+    return LMCResponse.ok(
+      {
+        created,
+        added,
+        skippedBlocked,
+        skippedUnsubscribed,
+        memberships,
+        errors,
+      },
+      { message: "Successfully added subscribers" },
+    );
   }
 
   async syncUsersToList(
@@ -742,6 +929,7 @@ export default class ListMonkClient {
       updated: 0,
     };
     const addIds: number[] = [];
+    const resubscribeIds: number[] = [];
 
     for (const entry of deduped.values()) {
       const emailKey = entry.email.toLowerCase();
@@ -761,10 +949,12 @@ export default class ListMonkClient {
           },
           { preconfirm: true, status: "enabled" },
         );
-        if (!createRes.success || !createRes.data) {
+        if (!createRes.success || !createRes.data?.subscriber) {
           return createRes as unknown as LMCResponse<LMCSyncUsersResult>;
         }
-        counts.added += 1;
+        if (createRes.data.added) {
+          counts.added += 1;
+        }
         continue;
       }
 
@@ -777,9 +967,9 @@ export default class ListMonkClient {
       const membershipStatus = listInfo?.subscription_status as
         | string
         | undefined;
-      if (membershipStatus === "unsubscribed") {
+      const isUnsubscribed = membershipStatus === "unsubscribed";
+      if (isUnsubscribed) {
         counts.unsubscribed += 1;
-        continue;
       }
 
       const targetAttribs: LMCSubscriberAttribs = {
@@ -819,8 +1009,12 @@ export default class ListMonkClient {
       const onList =
         listEntry &&
         (listEntry as LMCSubscription).subscription_status !== "unsubscribed";
-      if (!onList) {
-        addIds.push(existing.id);
+      if (!onList || isUnsubscribed) {
+        if (isUnsubscribed) {
+          resubscribeIds.push(existing.id);
+        } else {
+          addIds.push(existing.id);
+        }
         counts.added += 1;
       }
     }
@@ -839,12 +1033,28 @@ export default class ListMonkClient {
       }
     }
 
+    if (resubscribeIds.length > 0) {
+      const chunkSize = 2500;
+      for (let i = 0; i < resubscribeIds.length; i += chunkSize) {
+        const chunk = resubscribeIds.slice(i, i + chunkSize);
+        const res = await this.put(`/subscribers/lists`, {
+          ids: chunk,
+          action: "add",
+          target_list_ids: [listId],
+        });
+        if (!res.success) {
+          return res as unknown as LMCResponse<LMCSyncUsersResult>;
+        }
+      }
+    }
+
     return LMCResponse.ok(counts);
   }
 
   async updateUser(
     identifier: { id?: number; uuid?: string; email?: string },
     updates: Partial<LMCUser>,
+    options: { forceUidChange?: boolean } = {},
   ): Promise<LMCResponse<LMCSubscriber>> {
     const { id, uuid, email } = identifier;
     if (id === undefined && !uuid && !email) {
@@ -868,6 +1078,18 @@ export default class ListMonkClient {
       ...(updates.attribs ?? {}),
     };
 
+    if (
+      updates.uid !== undefined &&
+      existing.attribs?.uid !== undefined &&
+      updates.uid !== existing.attribs.uid &&
+      !options.forceUidChange
+    ) {
+      return LMCResponse.error(
+        "UID mismatch; set forceUidChange to overwrite existing uid",
+        { code: 400 },
+      );
+    }
+
     if (updates.uid !== undefined) {
       nextAttribs.uid = updates.uid;
     } else if (
@@ -885,10 +1107,17 @@ export default class ListMonkClient {
     const nextName =
       updates.name !== undefined ? updates.name : (existing.name ?? "");
 
+    const currentLists = existing.lists
+      ?.map((l) => l.id)
+      .filter((id): id is number => Number.isFinite(id));
+
     return this.put<LMCSubscriber>(`/subscribers/${existing.id}`, {
       email: nextEmail,
       name: nextName,
       attribs: nextAttribs,
+      ...(currentLists && currentLists.length > 0
+        ? { lists: currentLists }
+        : {}),
     });
   }
 
@@ -978,6 +1207,6 @@ export default class ListMonkClient {
 
   private buildEqualityQuery(field: string, value: string): string {
     const escaped = value.replace(/'/g, "''");
-    return encodeURIComponent(`${field} = '${escaped}'`);
+    return `${field} = '${escaped}'`;
   }
 }
