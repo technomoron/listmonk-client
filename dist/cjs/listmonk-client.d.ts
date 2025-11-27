@@ -9,6 +9,7 @@ export interface LMCConfig {
     timeoutMS?: number;
     debug?: boolean;
     listPageSize?: number;
+    listCacheSeconds?: number;
 }
 export interface LMCResponseData<T = unknown> {
     success: boolean;
@@ -21,6 +22,29 @@ export type LMCSubscriptionStatus = "enabled" | "disabled" | "blocklisted" | "un
 export interface LMCSubscribeOptions {
     preconfirm?: boolean;
     status?: LMCSubscriptionStatus;
+}
+export interface LMCUnsubscribeListResult {
+    listId: number;
+    listName?: string;
+    statusChanged: boolean;
+    message: "Subscribed" | "Unsubscribed" | "Unknown List";
+}
+export interface LMCUnsubscribeResult {
+    subscriberId: number;
+    lists: LMCUnsubscribeListResult[];
+}
+export type LMCSetSubscriptionsStatus = "Subscribed" | "Unsubscribed" | "Unchanged" | "Unknown List";
+export interface LMCSetSubscriptionsListResult {
+    listId: number;
+    listName?: string;
+    status: LMCSetSubscriptionsStatus;
+}
+export interface LMCSetSubscriptionsResult {
+    subscriberId: number;
+    lists: LMCSetSubscriptionsListResult[];
+}
+export interface LMCSetSubscriptionsOptions {
+    removeOthers?: boolean;
 }
 export type LMCListMemberStatus = "subscribed" | "unsubscribed" | "blocked";
 export type LMCListVisibility = "private" | "public";
@@ -114,8 +138,11 @@ export default class ListMonkClient {
     private timeoutMs;
     private debug;
     private listPageSize;
+    private listCacheSeconds?;
+    private listCache?;
     private authHeader?;
     constructor(config: LMCConfig);
+    private static encodeBase64;
     private buildHeaders;
     private safeFetch;
     private parseJson;
@@ -126,6 +153,26 @@ export default class ListMonkClient {
     delete<T>(command: string, body?: Record<string, unknown>): Promise<LMCResponse<T>>;
     deleteSubscriber(id: number): Promise<LMCResponse<boolean>>;
     deleteSubscribers(ids: number[]): Promise<LMCResponse<boolean>>;
+    getSubscriberById(id: number): Promise<LMCResponse<LMCSubscriber>>;
+    getSubscriberByUuid(uuid: string): Promise<LMCResponse<LMCSubscriber>>;
+    getSubscriberByEmail(email: string): Promise<LMCResponse<LMCSubscriber>>;
+    getSubscriber(identifier: {
+        id?: number;
+        uuid?: string;
+        email?: string;
+    }): Promise<LMCResponse<LMCSubscriber>>;
+    blockSubscriber(id: number): Promise<LMCResponse<LMCSubscriber>>;
+    unblockSubscriber(id: number): Promise<LMCResponse<LMCSubscriber>>;
+    unsubscribe(identifier: {
+        id?: number;
+        uuid?: string;
+        email?: string;
+    }, lists?: number | number[]): Promise<LMCResponse<LMCUnsubscribeResult>>;
+    setSubscriptions(identifier: {
+        id?: number;
+        uuid?: string;
+        email?: string;
+    }, listIds: number[], options?: LMCSetSubscriptionsOptions): Promise<LMCResponse<LMCSetSubscriptionsResult>>;
     listAllLists(visibility?: LMCListVisibility | "all"): Promise<LMCResponse<LMCListRecord[]>>;
     subscribe(listId: number, input: {
         email: string;
@@ -152,5 +199,7 @@ export default class ListMonkClient {
     private areAttribsEqual;
     private stableStringify;
     private buildEqualityQuery;
+    private getListNameMap;
+    private describeListStatus;
 }
 export {};

@@ -14,6 +14,9 @@ add, change email).
     `15000`).
   - `debug` (boolean, optional): enable request logging.
   - `listPageSize` (number, optional): default `per_page` for paging.
+  - `listCacheSeconds` (number, optional): cache list metadata for this duration
+    (seconds) to include list names in unsubscribe results and validate provided
+    list ids.
 
 - `LMCResponseData<T>`
   - `success` (boolean, required): indicates the request succeeded.
@@ -173,6 +176,25 @@ Fetch every list with an optional visibility filter.
 - `visibility`: `"public" | "private" | "all"` (default `all`).
 - Returns `LMCResponse<LMCListRecord[]>`.
 
+### `client.getSubscriberById(id)`
+
+Fetch a subscriber by id. Returns `LMCResponse<LMCSubscriber>`.
+
+### `client.getSubscriberByUuid(uuid)`
+
+Fetch a subscriber by uuid. Returns `LMCResponse<LMCSubscriber>`.
+
+### `client.getSubscriberByEmail(email)`
+
+Fetch a subscriber by email. Returns `LMCResponse<LMCSubscriber>`.
+
+### `client.getSubscriber(identifier)`
+
+Fetch a subscriber by id, uuid, or email.
+
+- `identifier`: `{ id?: number; uuid?: string; email?: string }` (one required)
+- Returns `LMCResponse<LMCSubscriber>`.
+
 ### `client.syncUsersToList(listId, users)`
 
 Upsert subscribers into a list by `uid`, updating email/name/attribs when they
@@ -183,6 +205,19 @@ differ.
 - Returns `LMCResponse<LMCSyncUsersResult>` with counts for `blocked`,
   `unsubscribed`, `added`, `updated` (added and updated can overlap when both
   occur for the same subscriber).
+
+### `client.setSubscriptions(identifier, listIds, options?)`
+
+Set a subscriber's list memberships (opted-in) with optional pruning.
+
+- `identifier`: `{ id?: number; uuid?: string; email?: string }` (one required)
+- `listIds`: `number[]` target lists to be subscribed to (preconfirmed).
+- `options?`: `{ removeOthers?: boolean }` (`false` by default). When `true`,
+  unsubscribe from lists not present in `listIds`.
+- Returns
+  `LMCResponse<{ subscriberId: number; lists: { listId: number; listName?: string; status: "Subscribed" | "Unsubscribed" | "Unchanged" | "Unknown List"; }[] }>`
+  (`status` reflects actions taken; list names included when available from the
+  cache/subscriber record).
 
 ### `client.updateUser(identifier, updates)`
 
@@ -206,6 +241,21 @@ Create a subscriber (if it doesn't exist) and subscribe it to a list.
   `"Successfully subscribed"` when the list was updated, `"Already subscribed"`
   when no change was needed, or `Failed to subscribe: ...` when an error occurs.
   Existing unsubscribed members are re-attached (unless blocklisted).
+
+### `client.unsubscribe(identifier, lists?)`
+
+Unsubscribe a subscriber from all lists or specific lists.
+
+- `identifier`: `{ id?: number; uuid?: string; email?: string }` (one required)
+- `lists`: `number | number[] | undefined` (omit or `[]` to unsubscribe from all
+  lists)
+- Returns
+  `LMCResponse<{ subscriberId: number; lists: { listId: number; listName?: string; statusChanged: boolean; message: "Subscribed" | "Unsubscribed" | "Unknown List" }[] }>`
+  - `lists` includes list names when `listCacheSeconds` is configured and the
+    cache is populated; falls back to ids when names are unavailable.
+    `statusChanged` is `true` when the subscriber was on that list before the
+    call. Unknown list ids are tolerated and reported with
+    `message: "Unknown List"`.
 
 ### `client.listMembersByStatus(listId, status, pagination?)`
 
@@ -238,6 +288,15 @@ Bulk create/add subscribers.
 ### `client.deleteSubscriber(id)`
 
 Delete a single subscriber by id. Returns `LMCResponse<boolean>`.
+
+### `client.blockSubscriber(id)`
+
+Blocklist a subscriber by id. Returns `LMCResponse<LMCSubscriber>`.
+
+### `client.unblockSubscriber(id)`
+
+Remove blocklist status for a subscriber by id. Returns
+`LMCResponse<LMCSubscriber>`.
 
 ### `client.deleteSubscribers(ids)`
 

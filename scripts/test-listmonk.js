@@ -1,3 +1,4 @@
+import { Buffer } from "node:buffer";
 import { createRequire } from "node:module";
 
 import { config as loadEnv } from "dotenv";
@@ -6,6 +7,10 @@ loadEnv({ path: new URL("../.env", import.meta.url).pathname });
 
 const require = createRequire(import.meta.url);
 const { ListMonkClient } = require("../dist/cjs/index.cjs");
+
+if (typeof globalThis.btoa !== "function") {
+  globalThis.btoa = (value) => Buffer.from(value, "binary").toString("base64");
+}
 
 const url = process.env.LISTMONK_URL;
 const username = process.env.LISTMONK_USERNAME;

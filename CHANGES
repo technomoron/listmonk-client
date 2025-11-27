@@ -1,7 +1,29 @@
-# 1.0.2
+@technomoron/listmonk-client
+============================
+
+1.0.6 (2025.11.27)
+------------------
+- Update lint/style/format configs.
+
+1.0.5 (2025.11.26)
+------------------
+- Require `btoa` in tests (polyfilled for Node) and add export coverage.
+- Live test now sets `btoa` polyfill for Node environments.
+
+1.0.4 (2025.11.26)
+------------------
+- Use `btoa` for basic-auth header encoding; throw when unavailable.
+
+1.0.3 (2025.11.26)
+------------------
+- Make basic-auth header construction portable across Node and edge runtimes (no `node:buffer` dependency).
+
+1.0.2 (2025.11.26)
+------------------
 - Bump version for npm-based build pipeline rerun; build script stays npm-friendly.
 
-# 1.0.1
+1.0.1 (2025.11.26)
+------------------
 - Improve response parsing for empty/non-JSON bodies.
 - `subscribe` now re-attaches unsubscribed members and surfaces required messages.
 - Bulk add returns per-entry errors and 207 for partial success.
@@ -11,5 +33,6 @@
 - Live test logs subscription statuses (new, already, resubscribe) and exercises update flows.
 - Adjust build script to avoid requiring pnpm when run via npm.
 
-# 1.0.0
+1.0.0 (2025.11.25)
+------------------
 - Initial release.

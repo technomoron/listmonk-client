@@ -1,5 +1,3 @@
-import { Buffer } from "node:buffer";
-
 type JsonPrimitive = string | number | boolean | null;
 type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
 
@@ -10,6 +8,7 @@ export interface LMCConfig {
   timeoutMS?: number;
   debug?: boolean;
   listPageSize?: number;
+  listCacheSeconds?: number;
 }
 
 export interface LMCResponseData<T = unknown> {
@@ -32,6 +31,39 @@ export type LMCSubscriptionStatus =
 export interface LMCSubscribeOptions {
   preconfirm?: boolean;
   status?: LMCSubscriptionStatus;
+}
+
+export interface LMCUnsubscribeListResult {
+  listId: number;
+  listName?: string;
+  statusChanged: boolean;
+  message: "Subscribed" | "Unsubscribed" | "Unknown List";
+}
+
+export interface LMCUnsubscribeResult {
+  subscriberId: number;
+  lists: LMCUnsubscribeListResult[];
+}
+
+export type LMCSetSubscriptionsStatus =
+  | "Subscribed"
+  | "Unsubscribed"
+  | "Unchanged"
+  | "Unknown List";
+
+export interface LMCSetSubscriptionsListResult {
+  listId: number;
+  listName?: string;
+  status: LMCSetSubscriptionsStatus;
+}
+
+export interface LMCSetSubscriptionsResult {
+  subscriberId: number;
+  lists: LMCSetSubscriptionsListResult[];
+}
+
+export interface LMCSetSubscriptionsOptions {
+  removeOthers?: boolean;
 }
 
 export type LMCListMemberStatus = "subscribed" | "unsubscribed" | "blocked";
@@ -174,6 +206,8 @@ export default class ListMonkClient {
   private timeoutMs: number;
   private debug: boolean;
   private listPageSize: number;
+  private listCacheSeconds?: number;
+  private listCache?: { expiresAt: number; lists: LMCListRecord[] };
   private authHeader?: string;
 
   constructor(config: LMCConfig) {
@@ -195,10 +229,20 @@ export default class ListMonkClient {
     this.timeoutMs = config.timeoutMS ?? 15_000;
     this.debug = config.debug ?? false;
     this.listPageSize = config.listPageSize ?? 100;
+    this.listCacheSeconds = config.listCacheSeconds;
 
-    this.authHeader = `Basic ${Buffer.from(
+    this.authHeader = `Basic ${ListMonkClient.encodeBase64(
       `${config.user}:${config.token}`,
-    ).toString("base64")}`;
+    )}`;
+  }
+
+  private static encodeBase64(value: string): string {
+    const globalBtoa = (globalThis as { btoa?: (data: string) => string }).btoa;
+    if (typeof globalBtoa !== "function") {
+      throw new Error("btoa is not available in this runtime");
+    }
+
+    return globalBtoa(value);
   }
 
   private buildHeaders(initHeaders?: HeadersInit): Headers {
@@ -365,6 +409,229 @@ export default class ListMonkClient {
     const params = new URLSearchParams();
     ids.forEach((id) => params.append("id", String(id)));
     return this.delete<boolean>(`/subscribers?${params.toString()}`);
+  }
+
+  async getSubscriberById(id: number): Promise<LMCResponse<LMCSubscriber>> {
+    return this.findSubscriber({ id });
+  }
+
+  async getSubscriberByUuid(uuid: string): Promise<LMCResponse<LMCSubscriber>> {
+    return this.findSubscriber({ uuid });
+  }
+
+  async getSubscriberByEmail(
+    email: string,
+  ): Promise<LMCResponse<LMCSubscriber>> {
+    return this.findSubscriber({ email });
+  }
+
+  async getSubscriber(identifier: {
+    id?: number;
+    uuid?: string;
+    email?: string;
+  }): Promise<LMCResponse<LMCSubscriber>> {
+    return this.findSubscriber(identifier);
+  }
+
+  async blockSubscriber(id: number): Promise<LMCResponse<LMCSubscriber>> {
+    if (!Number.isFinite(id)) {
+      return LMCResponse.error("id must be a number", { code: 400 });
+    }
+    return this.put<LMCSubscriber>(`/subscribers/${id}`, {
+      status: "blocklisted",
+    });
+  }
+
+  async unblockSubscriber(id: number): Promise<LMCResponse<LMCSubscriber>> {
+    if (!Number.isFinite(id)) {
+      return LMCResponse.error("id must be a number", { code: 400 });
+    }
+    return this.put<LMCSubscriber>(`/subscribers/${id}`, {
+      status: "enabled",
+    });
+  }
+
+  async unsubscribe(
+    identifier: { id?: number; uuid?: string; email?: string },
+    lists?: number | number[],
+  ): Promise<LMCResponse<LMCUnsubscribeResult>> {
+    const subscriber = await this.findSubscriber(identifier);
+    if (!subscriber.success || !subscriber.data) {
+      return subscriber as unknown as LMCResponse<LMCUnsubscribeResult>;
+    }
+
+    const listArray =
+      lists === undefined ? undefined : Array.isArray(lists) ? lists : [lists];
+
+    if (
+      listArray !== undefined &&
+      !listArray.every((id) => Number.isFinite(id))
+    ) {
+      return LMCResponse.error("lists must be a number or array of numbers", {
+        code: 400,
+      });
+    }
+
+    let targetListIds: number[] | undefined;
+    if (listArray !== undefined) {
+      targetListIds = Array.from(new Set(listArray.map((id) => Number(id))));
+      if (targetListIds.length === 0) {
+        targetListIds = undefined;
+      }
+    }
+
+    const memberListIds: number[] = [];
+    const subscribedListIds = new Set<number>();
+    (subscriber.data.lists ?? []).forEach((l) => {
+      if (!Number.isFinite(l.id)) return;
+      const id = Number(l.id);
+      memberListIds.push(id);
+      const status = (l as LMCSubscription).subscription_status;
+      if (status === undefined || status !== "unsubscribed") {
+        subscribedListIds.add(id);
+      }
+    });
+    const memberListIdSet = new Set(memberListIds);
+
+    const listNames = await this.getListNameMap(subscriber.data.lists);
+
+    const res = await this.put(`/subscribers/lists`, {
+      ids: [subscriber.data.id],
+      action: "unsubscribe",
+      ...(targetListIds ? { target_list_ids: targetListIds } : {}),
+    });
+
+    const attemptedIds =
+      targetListIds && targetListIds.length > 0 ? targetListIds : memberListIds;
+
+    const listsResult =
+      attemptedIds.length === 0
+        ? []
+        : attemptedIds.map((listId) => ({
+            listId,
+            listName: listNames.get(listId),
+            statusChanged:
+              memberListIds.length > 0 && subscribedListIds.has(listId),
+            message: this.describeListStatus(listId, {
+              memberListIdSet,
+              subscribedListIds,
+              listNames,
+            }),
+          }));
+
+    const result: LMCUnsubscribeResult = {
+      subscriberId: subscriber.data.id,
+      lists: listsResult,
+    };
+
+    if (res.success) {
+      return LMCResponse.ok(result, { code: res.code, message: res.message });
+    }
+
+    return LMCResponse.error(res.message, {
+      code: res.code,
+      data: result,
+    });
+  }
+
+  async setSubscriptions(
+    identifier: { id?: number; uuid?: string; email?: string },
+    listIds: number[],
+    options: LMCSetSubscriptionsOptions = {},
+  ): Promise<LMCResponse<LMCSetSubscriptionsResult>> {
+    const normalized = Array.from(
+      new Set(listIds.map((id) => Number(id))),
+    ).filter((id) => Number.isFinite(id));
+
+    if (listIds.length !== normalized.length) {
+      return LMCResponse.error("listIds must be numbers", { code: 400 });
+    }
+
+    const subscriber = await this.findSubscriber(identifier);
+    if (!subscriber.success || !subscriber.data) {
+      return subscriber as unknown as LMCResponse<LMCSetSubscriptionsResult>;
+    }
+
+    const listNames = await this.getListNameMap(subscriber.data.lists);
+    const targetSet = new Set<number>(normalized);
+
+    const currentListIds: number[] = [];
+    const subscribedListIds = new Set<number>();
+    (subscriber.data.lists ?? []).forEach((l) => {
+      if (!Number.isFinite(l.id)) return;
+      const id = Number(l.id);
+      currentListIds.push(id);
+      const status = (l as LMCSubscription).subscription_status;
+      if (status === undefined || status !== "unsubscribed") {
+        subscribedListIds.add(id);
+      }
+    });
+
+    const listsToAdd = normalized.filter((id) => !subscribedListIds.has(id));
+
+    const removeOthers = options.removeOthers ?? false;
+    const listsToRemove = removeOthers
+      ? currentListIds.filter(
+          (id) => subscribedListIds.has(id) && !targetSet.has(id),
+        )
+      : [];
+
+    if (listsToAdd.length > 0) {
+      const addRes = await this.put(`/subscribers/lists`, {
+        ids: [subscriber.data.id],
+        action: "add",
+        target_list_ids: listsToAdd,
+      });
+      if (!addRes.success) {
+        return addRes as unknown as LMCResponse<LMCSetSubscriptionsResult>;
+      }
+      listsToAdd.forEach((id) => subscribedListIds.add(id));
+    }
+
+    if (listsToRemove.length > 0) {
+      const removeRes = await this.put(`/subscribers/lists`, {
+        ids: [subscriber.data.id],
+        action: "unsubscribe",
+        target_list_ids: listsToRemove,
+      });
+      if (!removeRes.success) {
+        return removeRes as unknown as LMCResponse<LMCSetSubscriptionsResult>;
+      }
+      listsToRemove.forEach((id) => subscribedListIds.delete(id));
+    }
+
+    const resultMap = new Map<number, LMCSetSubscriptionsListResult>();
+
+    targetSet.forEach((id) => {
+      resultMap.set(id, {
+        listId: id,
+        listName: listNames.get(id),
+        status: subscribedListIds.has(id) ? "Unchanged" : "Subscribed",
+      });
+    });
+
+    listsToAdd.forEach((id) => {
+      resultMap.set(id, {
+        listId: id,
+        listName: listNames.get(id),
+        status: "Subscribed",
+      });
+    });
+
+    listsToRemove.forEach((id) => {
+      resultMap.set(id, {
+        listId: id,
+        listName: listNames.get(id),
+        status: "Unsubscribed",
+      });
+    });
+
+    const result: LMCSetSubscriptionsResult = {
+      subscriberId: subscriber.data.id,
+      lists: Array.from(resultMap.values()),
+    };
+
+    return LMCResponse.ok(result, { message: "Subscriptions updated" });
   }
 
   async listAllLists(
@@ -1208,5 +1475,57 @@ export default class ListMonkClient {
   private buildEqualityQuery(field: string, value: string): string {
     const escaped = value.replace(/'/g, "''");
     return `${field} = '${escaped}'`;
+  }
+
+  private async getListNameMap(
+    subscriberLists?: Array<LMCSubscription | LMCListRecord>,
+  ): Promise<Map<number, string>> {
+    const map = new Map<number, string>();
+
+    const tryAddName = (list: LMCSubscription | LMCListRecord) => {
+      const name =
+        "name" in list && typeof list.name === "string" ? list.name : undefined;
+      if (Number.isFinite(list.id) && name) {
+        map.set(list.id, name);
+      }
+    };
+
+    subscriberLists?.forEach(tryAddName);
+
+    if (!this.listCacheSeconds) {
+      return map;
+    }
+
+    const now = Date.now();
+    if (this.listCache && this.listCache.expiresAt > now) {
+      this.listCache.lists.forEach(tryAddName);
+      return map;
+    }
+
+    const res = await this.listAllLists();
+    if (res.success && res.data) {
+      this.listCache = {
+        expiresAt: now + this.listCacheSeconds * 1000,
+        lists: res.data,
+      };
+      res.data.forEach(tryAddName);
+    }
+
+    return map;
+  }
+
+  private describeListStatus(
+    listId: number,
+    context: {
+      memberListIdSet: Set<number>;
+      subscribedListIds: Set<number>;
+      listNames: Map<number, string>;
+    },
+  ): "Subscribed" | "Unsubscribed" | "Unknown List" {
+    const { memberListIdSet, subscribedListIds, listNames } = context;
+    if (!listNames.has(listId) && !memberListIdSet.has(listId)) {
+      return "Unknown List";
+    }
+    return subscribedListIds.has(listId) ? "Subscribed" : "Unsubscribed";
   }
 }
